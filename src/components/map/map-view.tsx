@@ -8,6 +8,8 @@ import type { PlaceWithPolicy } from "@/lib/types";
 export interface MapViewProps {
   places: PlaceWithPolicy[];
   selectedSlug?: string | null;
+  initialCenter?: { lat: number; lng: number };
+  initialZoom?: number;
   onSelect?: (place: PlaceWithPolicy) => void;
   onBoundsChange?: (bbox: {
     minLng: number;
@@ -15,6 +17,7 @@ export interface MapViewProps {
     maxLng: number;
     maxLat: number;
   }) => void;
+  onViewportChange?: (viewport: { lat: number; lng: number; zoom: number }) => void;
   className?: string;
 }
 
@@ -29,8 +32,11 @@ function styleUrl() {
 export function MapView({
   places,
   selectedSlug,
+  initialCenter,
+  initialZoom,
   onSelect,
   onBoundsChange,
+  onViewportChange,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -38,6 +44,7 @@ export function MapView({
   const markersRef = useRef<Marker[]>([]);
   const onSelectRef = useRef(onSelect);
   const onBoundsRef = useRef(onBoundsChange);
+  const onViewportRef = useRef(onViewportChange);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
@@ -48,13 +55,17 @@ export function MapView({
   }, [onBoundsChange]);
 
   useEffect(() => {
+    onViewportRef.current = onViewportChange;
+  }, [onViewportChange]);
+
+  useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: styleUrl(),
-      center: [-80.14, 26.05],
-      zoom: 9.2,
+      center: [initialCenter?.lng ?? -80.14, initialCenter?.lat ?? 26.05],
+      zoom: initialZoom ?? 9.2,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -68,11 +79,17 @@ export function MapView({
 
     const emitBounds = () => {
       const b = map.getBounds();
+      const c = map.getCenter();
       onBoundsRef.current?.({
         minLng: b.getWest(),
         minLat: b.getSouth(),
         maxLng: b.getEast(),
         maxLat: b.getNorth(),
+      });
+      onViewportRef.current?.({
+        lat: c.lat,
+        lng: c.lng,
+        zoom: map.getZoom(),
       });
     };
 
@@ -87,6 +104,8 @@ export function MapView({
       map.remove();
       mapRef.current = null;
     };
+    // initial center/zoom only for first mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

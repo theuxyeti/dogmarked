@@ -36,11 +36,11 @@ export interface ExploreUrlState {
   selectedSlug: string | null;
 }
 
-/** South Florida default viewport (Miami–Fort Lauderdale). */
+/** South Florida default viewport (Boca–Fort Lauderdale corridor). */
 export const DEFAULT_EXPLORE_STATE: ExploreUrlState = {
-  lat: 25.7617,
-  lng: -80.1918,
-  zoom: 10,
+  lat: 26.05,
+  lng: -80.14,
+  zoom: 9.2,
   filters: {
     categories: [],
     dogStatuses: [],

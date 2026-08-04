@@ -4,6 +4,8 @@ Build your own map of dog-friendly places, discover places shared by others, and
 
 Map-first travel web app: personal saves, public policy contributions, and a trusted canonical dog-policy database. Phase 0–1 ships infrastructure plus a South Florida vertical slice.
 
+**Tracking:** [`docs/roadmap.md`](docs/roadmap.md) (phase status) · [`docs/master-build-plan.md`](docs/master-build-plan.md) (architecture)
+
 ## Stack
 
 - **Next.js** (App Router) + TypeScript + Tailwind CSS v4

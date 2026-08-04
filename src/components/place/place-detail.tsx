@@ -205,25 +205,47 @@ export function PlaceDetail({
         ) : null}
       </section>
 
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={busy} onClick={() => savePlace("want_to_go")} size="sm">
-          Save privately
-        </Button>
-        <Button
-          disabled={busy}
-          variant="secondary"
-          onClick={() => savePlace("visited")}
-          size="sm"
-        >
-          Mark visited
-        </Button>
-        <Button disabled={busy} variant="outline" onClick={publishContribution} size="sm">
-          Publish policy note
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/place/${place.slug}`}>Open page</Link>
-        </Button>
-      </div>
+      <section className="space-y-3 border-t border-border pt-3">
+        <div>
+          <h3 className="text-sm font-medium text-ink">Personal map</h3>
+          <p className="text-xs text-muted">Private by default — never publishes dog rules.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button disabled={busy} onClick={() => savePlace("want_to_go")} size="sm">
+              Save privately
+            </Button>
+            <Button
+              disabled={busy}
+              variant="secondary"
+              onClick={() => savePlace("visited")}
+              size="sm"
+            >
+              Mark visited
+            </Button>
+            <Button
+              disabled={busy}
+              variant="outline"
+              onClick={() => savePlace("recommended")}
+              size="sm"
+            >
+              Recommend
+            </Button>
+          </div>
+        </div>
+        <div>
+          <h3 className="text-sm font-medium text-ink">Public contribution</h3>
+          <p className="text-xs text-muted">
+            Submits a policy observation. Canonical promotion is server-only.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button disabled={busy} variant="outline" onClick={publishContribution} size="sm">
+              Publish policy note
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/place/${place.slug}`}>Open page</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
       {message ? <p className="text-sm text-muted">{message}</p> : null}
     </article>
   );

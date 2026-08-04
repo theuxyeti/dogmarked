@@ -1,7 +1,25 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { isSupabaseConfigured } from "@/lib/utils";
 
-export function AppHeader() {
+export async function AppHeader() {
+  let email: string | null = null;
+  let signedIn = false;
+
+  if (isSupabaseConfigured()) {
+    try {
+      const { createClient } = await import("@/lib/supabase/server");
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      signedIn = Boolean(user);
+      email = user?.email ?? null;
+    } catch {
+      signedIn = false;
+    }
+  }
+
   return (
     <header className="hidden items-center justify-between gap-4 border-b border-border bg-card/80 px-5 py-3 backdrop-blur md:flex safe-pt">
       <Link href="/explore" className="font-display text-2xl tracking-tight text-teal-deep">
@@ -23,9 +41,20 @@ export function AppHeader() {
         <Button asChild variant="secondary" size="sm">
           <Link href="/profile">Profile</Link>
         </Button>
-        <Button asChild size="sm">
-          <Link href="/login">Sign in</Link>
-        </Button>
+        {signedIn ? (
+          <>
+            <span className="hidden max-w-[10rem] truncate px-2 text-xs text-muted lg:inline">
+              {email}
+            </span>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/auth/signout">Sign out</Link>
+            </Button>
+          </>
+        ) : (
+          <Button asChild size="sm">
+            <Link href="/login">Sign in</Link>
+          </Button>
+        )}
       </nav>
     </header>
   );

@@ -1,22 +1,19 @@
 <tldr>
-Code for Phases 1–8 is in and builds; [`docs/master-build-plan.md`](docs/master-build-plan.md) checklists updated. **Phase 0 blocked on your checkpoints** — need GitHub, Vercel, Supabase, and MapTiler before preview deploy.
+Living tracker: [`docs/roadmap.md`](docs/roadmap.md). Phase 1 core loop + Explore URL/filters + Saved status workflows + Add-by-location are in. Apply new migration `places_location_sync` on Supabase, then smoke-test live.
 </tldr>
 
 ## Active
 
-- [ ] Phase 0 checkpoints — waiting on you (see questions below)
+- [ ] Apply migration `20260304120400_places_location_sync.sql` on hosted Supabase
+- [ ] Live smoke: sign in → create → save → change status on Saved → publish
+- [ ] Breakpoint QA pass (Phase 2)
 
-## Blocked
+## Done this session
 
-- [ ] GitHub repository URL or OK to create `dogmarked`
-- [ ] Vercel team/project connection
-- [ ] Supabase project URL + publishable key + service-role key (prefer `.env.local`, not chat)
-- [ ] MapTiler public API key
-- [ ] Production domain (optional for now)
-
-## Done
-
-- [x] [`docs/master-build-plan.md`](docs/master-build-plan.md) — living checklists
-- [x] Phase 1 vertical slice — [UI agent](3596cef8-29a2-4919-8722-131db631de8b) + [schema agent](fcf0e1b0-8b31-40c5-9bf7-cc2937a845b2)
-- [x] Phases 2–8 modules — [features agent](294c0a8a-3e95-4a68-ab80-5684e723884b)
-- [x] `npm test` (11) + `npm run build` green
+- [x] `docs/roadmap.md` phase board
+- [x] Create place API + Add flow
+- [x] Saves GET + Saved from Supabase
+- [x] Auth-aware header
+- [x] Explore URL state + category/policy/layer filters
+- [x] Saved status change + remove
+- [x] Add by current location + coordinates

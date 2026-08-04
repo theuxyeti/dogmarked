@@ -3,7 +3,7 @@
 **Working product name:** Dogmarked  
 **Former codename:** Operation Dog Friendly (retired for product/brand language)
 
-This file is the **living tracking artifact** for Dogmarked. Use the phase checklists below to track progress. Checkboxes start unchecked; Phase 0 and Phase 1 work will be implemented in code against this plan.
+This file is the **architecture + acceptance** source for Dogmarked. Day-to-day phase progress is tracked in [`roadmap.md`](./roadmap.md). Use the phase checklists below for detailed scope; keep `roadmap.md` status symbols current as work ships.
 
 ---
 
