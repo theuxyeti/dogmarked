@@ -1,10 +1,10 @@
 <tldr>
-Phases 1–4 largely wired; Community now loads live public maps/verified places. **You:** apply migrations `…204`, `…205`, `…206` on hosted Supabase, then smoke-test.
+Phases 1–4 wired; hosted migrations `204`–`206` applied. Next: deploy branch if not live, then smoke-test the signed-in loop.
 </tldr>
 
 ## Needs you
 
-- [ ] Apply on Supabase SQL Editor:
+- [x] Apply on Supabase SQL Editor:
   - `20260304120400_places_location_sync.sql`
   - `20260304120500_public_profile_saves.sql`
   - `20260304120600_policy_reports.sql`

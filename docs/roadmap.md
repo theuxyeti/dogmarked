@@ -22,8 +22,8 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 ## Current focus
 
-**Active:** Apply hosted Supabase migrations + live smoke test  
-**Next:** Breakpoint QA, then Phase 5 seasonal / Phase 7 OSM when ready
+**Active:** Live smoke test (migrations 204–206 applied on hosted Supabase)  
+**Next:** Confirm production/preview deploy, then breakpoint QA
 
 ---
 
