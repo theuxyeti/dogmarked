@@ -1,4 +1,15 @@
-export type PlaceCategory = "park" | "restaurant" | "beach" | "hotel" | "cafe" | "other";
+export type PlaceCategory =
+  | "park"
+  | "restaurant"
+  | "beach"
+  | "hotel"
+  | "cafe"
+  | "other"
+  | "attraction"
+  | "landmark"
+  | "shopping"
+  | "transport"
+  | "pet_service";
 
 export type PlaceStatus = "active" | "closed" | "duplicate_merged";
 
@@ -14,9 +25,12 @@ export type DogStatus =
 /** Matches public.fee_type enum */
 export type FeeType = "none" | "flat" | "per_dog" | "per_night" | "deposit" | "unknown";
 
-export type SaveStatus = "want_to_go" | "visited" | "recommended";
+export type SaveStatus = "want_to_go" | "been_there" | "visited" | "recommended";
 
 export type SaveVisibility = "private" | "link" | "public";
+
+/** MVP save statuses shown in UI */
+export type MvpSaveStatus = "want_to_go" | "been_there";
 
 export type CompatibilityVerdict =
   | "good_match"

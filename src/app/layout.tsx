@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Manrope } from "next/font/google";
 import { AppHeader } from "@/components/layout/app-header";
-import { MobileNav } from "@/components/layout/mobile-nav";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     template: "%s · Dogmarked",
   },
   description:
-    "Build your own map of dog-friendly places, discover places shared by others, and understand the actual rules before you arrive.",
+    "Find a place, save it, tag it, and see it on your map — a personal dog travel map.",
 };
 
 export default function RootLayout({
@@ -27,10 +27,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${manrope.variable} antialiased`}>
-        <div className="flex min-h-dvh flex-col">
-          <AppHeader />
-          <main className="min-h-0 flex-1 pb-20 xl:pb-0">{children}</main>
-          <MobileNav />
+        <div className="flex min-h-dvh flex-col bg-[var(--color-canvas)]">
+          <Suspense
+            fallback={
+              <div className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)] sm:h-16" />
+            }
+          >
+            <AppHeader />
+          </Suspense>
+          <main className="min-h-0 flex-1">{children}</main>
         </div>
       </body>
     </html>

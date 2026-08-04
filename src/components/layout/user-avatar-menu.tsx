@@ -71,14 +71,6 @@ export function UserAvatarMenu() {
           >
             Dog profiles
           </Link>
-          <Link
-            href="/profile"
-            role="menuitem"
-            className="block px-3 py-2 text-sm hover:bg-foam"
-            onClick={() => setOpen(false)}
-          >
-            Settings
-          </Link>
           <form action="/auth/signout" method="post">
             <button
               type="submit"

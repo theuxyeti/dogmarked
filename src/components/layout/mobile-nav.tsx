@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Compass, MapPinned, Plus, Users, User } from "lucide-react";
+import { Compass, MapPinned, Plus, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Legacy bottom nav — Explore layout uses AppHeader; kept for optional reuse. */
 const items: Array<{
   href: string;
   label: string;
@@ -12,9 +13,8 @@ const items: Array<{
   emphasize?: boolean;
 }> = [
   { href: "/explore", label: "Explore", icon: Compass },
-  { href: "/saved", label: "My Places", icon: MapPinned },
-  { href: "/add", label: "Add", icon: Plus, emphasize: true },
-  { href: "/community", label: "Community", icon: Users },
+  { href: "/explore", label: "My Places", icon: MapPinned },
+  { href: "/explore", label: "Add", icon: Plus, emphasize: true },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
@@ -26,11 +26,14 @@ export function MobileNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 backdrop-blur xl:hidden safe-pb"
       aria-label="Primary"
     >
-      <ul className="grid grid-cols-5 px-1 pt-1">
+      <ul className="grid grid-cols-4 px-1 pt-1">
         {items.map(({ href, label, icon: Icon, emphasize }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
+          const active =
+            label === "My Places" || label === "Add"
+              ? pathname.startsWith("/explore")
+              : pathname === href || pathname.startsWith(`${href}/`);
           return (
-            <li key={href}>
+            <li key={label}>
               <Link
                 href={href}
                 className={cn(

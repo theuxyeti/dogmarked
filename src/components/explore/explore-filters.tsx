@@ -6,11 +6,16 @@ import type { DogStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const CATEGORIES: { value: PlaceCategory; label: string }[] = [
-  { value: "park", label: "Park" },
-  { value: "beach", label: "Beach" },
-  { value: "restaurant", label: "Restaurant" },
-  { value: "cafe", label: "Cafe" },
   { value: "hotel", label: "Hotel" },
+  { value: "restaurant", label: "Food & Drink" },
+  { value: "cafe", label: "Cafe" },
+  { value: "beach", label: "Beach" },
+  { value: "park", label: "Park" },
+  { value: "attraction", label: "Attraction" },
+  { value: "landmark", label: "Landmark" },
+  { value: "shopping", label: "Shopping" },
+  { value: "transport", label: "Transport" },
+  { value: "pet_service", label: "Pet Service" },
   { value: "other", label: "Other" },
 ];
 

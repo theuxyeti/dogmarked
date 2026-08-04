@@ -20,7 +20,7 @@ export default function LoginPage() {
     const supabase = tryCreateBrowserClient();
     if (!supabase) {
       setError(
-        "Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.local.",
+        "Sign-in isn’t available yet. Check that the project is connected, then try again.",
       );
       setLoading(false);
       return;

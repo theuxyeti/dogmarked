@@ -1,49 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  /* Dogmarked design tokens — trustworthy coastal travel */
-  --dm-teal: #0f6b6b;
-  --dm-teal-deep: #0a4f4f;
-  --dm-teal-soft: #1a8a8a;
-  --dm-sand: #e8dcc8;
-  --dm-ink: #1c2421;
-  --dm-paper: #f7f3ec;
-  --dm-foam: #f0f7f6;
-  --dm-muted: #5c6b66;
-  --dm-border: color-mix(in oklab, var(--dm-ink) 12%, transparent);
-  --dm-danger: #9b3a2f;
-  --dm-ask: #b7791f;
-  --dm-good: #1f7a4d;
-  --dm-unknown: #64716d;
-  --dm-neutral-poi: #6b7c78;
-  --dm-policy-pin: #0f6b6b;
-  --dm-radius: 0.75rem;
-  --dm-header-h: 64px;
-  --dm-panel-left: 380px;
-  --dm-panel-right: 420px;
+  /* Simplified MVP palette */
+  --color-brand-700: #084a45;
+  --color-brand-600: #0b5f59;
+  --color-brand-500: #11756e;
+  --color-brand-100: #ddeeea;
 
-  /* Aliases used by existing components */
-  --teal: var(--dm-teal);
-  --teal-deep: var(--dm-teal-deep);
-  --sand: var(--dm-sand);
-  --ink: var(--dm-ink);
-  --paper: var(--dm-paper);
-  --foam: var(--dm-foam);
-  --muted: var(--dm-muted);
-  --border: var(--dm-border);
-  --danger: var(--dm-danger);
-  --ask: var(--dm-ask);
-  --good: var(--dm-good);
+  --color-accent-600: #d96544;
+  --color-accent-500: #ee7d59;
+  --color-accent-100: #fbe8e0;
 
-  --background: var(--dm-paper);
-  --foreground: var(--dm-ink);
-  --card: #fffdf8;
-  --primary: var(--dm-teal);
+  --color-canvas: #f7f5ef;
+  --color-surface: #fffefb;
+  --color-surface-muted: #edf3f1;
+  --color-sand: #efe5d2;
+
+  --color-ink: #18221f;
+  --color-text: #2c3834;
+  --color-text-muted: #64726e;
+  --color-border: #d8deda;
+
+  --color-success: #207a50;
+  --color-warning: #a86515;
+  --color-danger: #b43e46;
+  --color-focus: #2f6fed;
+
+  /* Legacy aliases used across older components */
+  --dm-teal: var(--color-brand-600);
+  --dm-teal-deep: var(--color-brand-700);
+  --dm-sand: var(--color-sand);
+  --dm-ink: var(--color-ink);
+  --dm-paper: var(--color-canvas);
+  --dm-foam: var(--color-surface-muted);
+  --dm-muted: var(--color-text-muted);
+  --dm-border: var(--color-border);
+  --dm-danger: var(--color-danger);
+  --teal: var(--color-brand-600);
+  --teal-deep: var(--color-brand-700);
+  --sand: var(--color-sand);
+  --ink: var(--color-ink);
+  --paper: var(--color-canvas);
+  --foam: var(--color-surface-muted);
+  --muted: var(--color-text-muted);
+  --border: var(--color-border);
+  --danger: var(--color-danger);
+
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --primary: var(--color-brand-600);
   --primary-foreground: #f7fffe;
-  --secondary: var(--dm-sand);
-  --secondary-foreground: var(--dm-ink);
-  --accent: color-mix(in oklab, var(--dm-teal) 12%, var(--dm-paper));
-  --radius: var(--dm-radius);
+  --secondary: var(--color-sand);
+  --secondary-foreground: var(--color-ink);
+  --accent: var(--color-brand-100);
+  --radius: 0.75rem;
 
   --font-display: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
@@ -67,8 +78,6 @@
   --color-paper: var(--paper);
   --color-foam: var(--foam);
   --color-danger: var(--danger);
-  --color-ask: var(--ask);
-  --color-good: var(--good);
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
   --radius-lg: var(--radius);
@@ -85,13 +94,9 @@ body {
 
 body {
   margin: 0;
-  color: var(--dm-ink);
+  color: var(--color-ink);
   font-family: var(--font-sans);
-  background:
-    radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--dm-teal) 14%, transparent), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, var(--dm-sand) 70%, transparent), transparent 50%),
-    linear-gradient(180deg, var(--dm-foam), var(--dm-paper) 40%, var(--dm-sand));
-  background-attachment: fixed;
+  background: var(--color-canvas);
 }
 
 h1,
@@ -99,7 +104,7 @@ h2,
 h3,
 .font-display {
   font-family: var(--font-display);
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
@@ -108,7 +113,6 @@ a {
   text-decoration: none;
 }
 
-/* Safe-area utilities for mobile web / PWA */
 .safe-pb {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
@@ -117,69 +121,71 @@ a {
   padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
-.safe-px {
-  padding-left: max(1rem, env(safe-area-inset-left));
-  padding-right: max(1rem, env(safe-area-inset-right));
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-.safe-inset {
-  padding-top: max(0.5rem, env(safe-area-inset-top));
-  padding-right: max(1rem, env(safe-area-inset-right));
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
-  padding-left: max(1rem, env(safe-area-inset-left));
-}
-
-.maplibregl-popup-content {
-  font-family: var(--font-sans);
-  border-radius: var(--dm-radius);
-  padding: 0.5rem 0.75rem;
-  box-shadow: 0 8px 24px color-mix(in oklab, var(--dm-ink) 12%, transparent);
-}
-
-/* Quiet contextual POI markers (layer B) — never status-colored */
-.dm-poi-marker {
-  width: 8px;
-  height: 8px;
-  border-radius: 9999px;
-  background: var(--dm-neutral-poi);
-  border: 1.5px solid #fff;
-  box-shadow: 0 1px 3px color-mix(in oklab, var(--dm-ink) 20%, transparent);
-  cursor: pointer;
-}
-
-.dm-policy-marker {
-  width: 14px;
-  height: 14px;
+/* Map markers — MVP status colors */
+.dm-marker {
+  width: 16px;
+  height: 16px;
   border-radius: 9999px;
   border: 2px solid #fff;
-  box-shadow: 0 2px 6px color-mix(in oklab, var(--dm-ink) 25%, transparent);
+  box-shadow: 0 2px 6px color-mix(in oklab, var(--color-ink) 22%, transparent);
   cursor: pointer;
-  background: var(--dm-policy-pin);
+  transition: transform 160ms ease;
 }
 
-.dm-policy-marker[data-status="ask_first"] {
-  background: var(--dm-ask);
+.dm-marker[data-selected="true"] {
+  transform: scale(1.25);
+  outline: 2px solid var(--color-brand-700);
+  outline-offset: 2px;
 }
 
-.dm-policy-marker[data-status="no_dogs"],
-.dm-policy-marker[data-status="service_animals_only"] {
-  background: var(--dm-danger);
+.dm-marker--want {
+  background: transparent;
+  border: 2.5px solid var(--color-accent-500);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-accent-500) 25%, transparent);
 }
 
-.dm-policy-marker[data-status="dogs_welcome"],
-.dm-policy-marker[data-status="dogs_ok_outdoors"],
-.dm-policy-marker[data-status="dogs_ok_with_restrictions"] {
-  background: var(--dm-good);
+.dm-marker--been {
+  background: var(--color-brand-600);
 }
 
-.dm-policy-marker--unverified {
-  background: var(--dm-unknown, #64716d);
+.dm-marker--others {
+  background: #9aa8a4;
+  width: 12px;
+  height: 12px;
+  opacity: 0.85;
+}
+
+.dm-marker--candidate {
+  background: var(--color-accent-100);
+  border: 2px dashed var(--color-accent-500);
+  width: 12px;
+  height: 12px;
+}
+
+.dm-marker--unverified {
+  background: #64716d;
   width: 12px;
   height: 12px;
   border-style: dashed;
 }
 
-.dm-policy-marker[data-selected="true"] {
-  outline: 2px solid var(--dm-teal-deep);
-  outline-offset: 2px;
+/* Back-compat aliases */
+.dm-policy-marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  background: var(--color-brand-600);
+  box-shadow: 0 2px 6px color-mix(in oklab, var(--color-ink) 22%, transparent);
+  cursor: pointer;
 }

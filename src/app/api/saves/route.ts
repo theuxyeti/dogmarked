@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { publicApiError, logServerError } from "@/lib/api-errors";
+import {
+  DOG_BADGE_IDS,
+  fromDbSaveStatus,
+  toDbSaveStatus,
+  type DogBadgeId,
+  type MvpSaveStatus,
+} from "@/lib/mvp/taxonomy";
 import { isSupabaseConfigured } from "@/lib/utils";
 
 const saveSchema = z.object({
   placeId: z.string().uuid().or(z.string().min(1)),
-  status: z.enum(["want_to_go", "visited", "recommended"]).default("want_to_go"),
-  visibility: z.enum(["private", "link", "public"]).default("private"),
+  status: z.enum(["want_to_go", "been_there", "visited"]).default("want_to_go"),
+  visibility: z.enum(["private", "public"]).default("private"),
   privateNotes: z.string().max(2000).optional().nullable(),
+  dogBadges: z.array(z.string()).max(20).optional().default([]),
+  category: z.string().optional(),
 });
+
+function sanitizeBadges(raw: string[] | undefined): DogBadgeId[] {
+  return (raw ?? []).filter((b): b is DogBadgeId => DOG_BADGE_IDS.has(b as DogBadgeId));
+}
 
 export async function GET() {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Supabase is not configured. Private saves require NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
-      },
+      { ok: false, error: "Your places aren’t available yet. Try again later." },
       { status: 503 },
     );
   }
@@ -28,41 +38,44 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json(
-      { error: "Sign in required to view your saves." },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Sign in to see your places." }, { status: 401 });
   }
 
   const { data, error } = await supabase
     .from("user_place_saves")
     .select(
-      "place_id, status, visibility, private_notes, places(id, name, slug, city, category)",
+      "place_id, status, visibility, private_notes, dog_badges, places(id, name, slug, city, category, lat, lng, address_line1, website)",
     )
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    logServerError("saves.GET", error);
+    return NextResponse.json(
+      { error: publicApiError(error, "Could not load your places.") },
+      { status: 400 },
+    );
   }
 
   const saves = (data ?? []).flatMap((row) => {
-    const placeRaw = row.places as
-      | { id: string; name: string; slug: string; city: string | null; category: string | null }
-      | { id: string; name: string; slug: string; city: string | null; category: string | null }[]
-      | null;
+    const placeRaw = row.places as Record<string, unknown> | Record<string, unknown>[] | null;
     const place = Array.isArray(placeRaw) ? placeRaw[0] : placeRaw;
     if (!place) return [];
     return [
       {
-        placeId: place.id,
-        slug: place.slug,
-        name: place.name,
-        status: row.status as "want_to_go" | "visited" | "recommended",
-        visibility: row.visibility as "private" | "link" | "public",
-        privateNotes: row.private_notes as string | null,
-        city: place.city,
-        category: place.category,
+        placeId: String(place.id),
+        slug: String(place.slug),
+        name: String(place.name),
+        status: fromDbSaveStatus(String(row.status)),
+        visibility: row.visibility === "public" ? "public" : "private",
+        privateNotes: (row.private_notes as string | null) ?? null,
+        dogBadges: sanitizeBadges((row.dog_badges as string[]) ?? []),
+        city: (place.city as string | null) ?? null,
+        category: (place.category as string | null) ?? "other",
+        lat: Number(place.lat),
+        lng: Number(place.lng),
+        address: (place.address_line1 as string | null) ?? null,
+        website: (place.website as string | null) ?? null,
       },
     ];
   });
@@ -73,11 +86,7 @@ export async function GET() {
 export async function POST(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Supabase is not configured. Private saves require NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
-      },
+      { ok: false, error: "Saving requires a connected project." },
       { status: 503 },
     );
   }
@@ -91,7 +100,7 @@ export async function POST(request: Request) {
 
   const parsed = saveSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "Check the place details and try again." }, { status: 400 });
   }
 
   const { createClient } = await import("@/lib/supabase/server");
@@ -101,47 +110,59 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json(
-      { error: "Sign in required to save places privately." },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Sign in to save places." }, { status: 401 });
   }
 
-  const { placeId, status, visibility, privateNotes } = parsed.data;
+  const mvpStatus: MvpSaveStatus =
+    parsed.data.status === "been_there" || parsed.data.status === "visited"
+      ? "been_there"
+      : "want_to_go";
+  const dogBadges = sanitizeBadges(parsed.data.dogBadges);
+
   const { error } = await supabase.from("user_place_saves").upsert(
     {
       user_id: user.id,
-      place_id: placeId,
-      status,
-      visibility,
-      private_notes: privateNotes ?? null,
+      place_id: parsed.data.placeId,
+      status: toDbSaveStatus(mvpStatus),
+      visibility: parsed.data.visibility,
+      private_notes: parsed.data.privateNotes ?? null,
+      dog_badges: dogBadges,
     },
     { onConflict: "user_id,place_id" },
   );
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    logServerError("saves.POST", error);
+    return NextResponse.json(
+      { error: publicApiError(error, "Could not save that place.") },
+      { status: 400 },
+    );
+  }
+
+  // Optional: update place category when saver sets one
+  if (parsed.data.category) {
+    await supabase
+      .from("places")
+      .update({ category: parsed.data.category, updated_at: new Date().toISOString() })
+      .eq("id", parsed.data.placeId)
+      .eq("created_by", user.id);
   }
 
   return NextResponse.json({
     ok: true,
-    message: "Saved privately — this does not publish a dog policy.",
+    message: "Saved to your map.",
   });
 }
 
 export async function DELETE(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Supabase is not configured.",
-      },
+      { ok: false, error: "Could not update your places right now." },
       { status: 503 },
     );
   }
 
-  const { searchParams } = new URL(request.url);
-  const placeId = searchParams.get("placeId");
+  const placeId = new URL(request.url).searchParams.get("placeId");
   if (!placeId) {
     return NextResponse.json({ error: "placeId required" }, { status: 400 });
   }
@@ -163,7 +184,11 @@ export async function DELETE(request: Request) {
     .eq("place_id", placeId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    logServerError("saves.DELETE", error);
+    return NextResponse.json(
+      { error: publicApiError(error, "Could not remove that place.") },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ ok: true });

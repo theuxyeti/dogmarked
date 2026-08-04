@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { logServerError, publicApiError } from "@/lib/api-errors";
 import { getPlaceBySlug } from "@/lib/places/queries";
 import { isSupabaseConfigured } from "@/lib/utils";
 
@@ -24,7 +25,10 @@ export async function PATCH(
   context: { params: Promise<{ slug: string }> },
 ) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
+    return NextResponse.json(
+      { error: "Could not update that place right now." },
+      { status: 503 },
+    );
   }
 
   const { slug } = await context.params;
@@ -37,7 +41,7 @@ export async function PATCH(
 
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "Invalid place status." }, { status: 400 });
   }
 
   const { createClient } = await import("@/lib/supabase/server");
@@ -58,11 +62,13 @@ export async function PATCH(
     .maybeSingle();
 
   if (error || !data) {
+    if (error) logServerError("places.PATCH", error);
     return NextResponse.json(
       {
-        error:
-          error?.message ??
-          "Could not update place. You must own it or be a moderator.",
+        error: publicApiError(
+          error,
+          "Could not update place. You may need to own it or be a moderator.",
+        ),
       },
       { status: 400 },
     );

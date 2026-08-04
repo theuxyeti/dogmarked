@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { logServerError, publicApiError } from "@/lib/api-errors";
 import { DEFAULT_BBOX, getPlacesInBbox } from "@/lib/places/queries";
 import { pointEwkt, slugifyPlaceName } from "@/lib/places/slug";
 import { isSupabaseConfigured } from "@/lib/utils";
@@ -7,7 +8,19 @@ import { isSupabaseConfigured } from "@/lib/utils";
 const createPlaceSchema = z.object({
   name: z.string().trim().min(2).max(200),
   category: z
-    .enum(["park", "restaurant", "beach", "hotel", "cafe", "other"])
+    .enum([
+      "park",
+      "restaurant",
+      "beach",
+      "hotel",
+      "cafe",
+      "other",
+      "attraction",
+      "landmark",
+      "shopping",
+      "transport",
+      "pet_service",
+    ])
     .default("other"),
   lat: z.number().gte(-90).lte(90),
   lng: z.number().gte(-180).lte(180),
@@ -39,8 +52,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Supabase is not configured. Creating places requires a connected project.",
+        error: "Saving places requires a connected project.",
       },
       { status: 503 },
     );
@@ -55,7 +67,10 @@ export async function POST(request: Request) {
 
   const parsed = createPlaceSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: "Check the place name and location, then try again." },
+      { status: 400 },
+    );
   }
 
   const { createClient } = await import("@/lib/supabase/server");
@@ -151,12 +166,16 @@ export async function POST(request: Request) {
         created: true,
         duplicate: false,
         place,
-        message: "Place created. You can now save it privately or publish a policy contribution.",
+        message: "Place created — add it to your map.",
       });
     }
 
     if (error?.code !== "23505") {
-      return NextResponse.json({ error: error?.message ?? "Failed to create place" }, { status: 400 });
+      logServerError("places.POST", error);
+      return NextResponse.json(
+        { error: publicApiError(error, "Could not create that place.") },
+        { status: 400 },
+      );
     }
   }
 

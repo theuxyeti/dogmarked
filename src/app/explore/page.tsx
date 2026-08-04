@@ -1,26 +1,21 @@
+import { Suspense } from "react";
 import { ExploreClient } from "@/app/explore/explore-client";
-import { DEFAULT_BBOX, getPlacesInBbox } from "@/lib/places/queries";
-import { parseExploreUrlState } from "@/lib/url-state";
 
 export const metadata = {
-  title: "Explore",
+  title: "Map",
+  description: "Find a place, save it, and see it on your Dogmarked map.",
 };
 
-export default async function ExplorePage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
-  const initialState = parseExploreUrlState(params);
-
-  const pad = 0.35;
-  const places = await getPlacesInBbox({
-    minLng: initialState.lng - pad,
-    minLat: initialState.lat - pad,
-    maxLng: initialState.lng + pad,
-    maxLat: initialState.lat + pad,
-  }).catch(() => getPlacesInBbox(DEFAULT_BBOX));
-
-  return <ExploreClient initialPlaces={places} initialState={initialState} />;
+export default function ExplorePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-[50dvh] items-center justify-center text-sm text-[var(--color-text-muted)]">
+          Loading map…
+        </div>
+      }
+    >
+      <ExploreClient />
+    </Suspense>
+  );
 }

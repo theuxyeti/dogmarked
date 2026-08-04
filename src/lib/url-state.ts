@@ -3,13 +3,9 @@
  * Designed for Next.js App Router searchParams (string | string[] | undefined).
  */
 
-export type PlaceCategory =
-  | "park"
-  | "restaurant"
-  | "beach"
-  | "hotel"
-  | "cafe"
-  | "other";
+import type { PlaceCategory } from "@/lib/types";
+
+export type { PlaceCategory };
 
 export type DogStatusFilter =
   | "dogs_welcome"
@@ -57,6 +53,11 @@ const CATEGORIES = new Set<PlaceCategory>([
   "hotel",
   "cafe",
   "other",
+  "attraction",
+  "landmark",
+  "shopping",
+  "transport",
+  "pet_service",
 ]);
 
 const DOG_STATUSES = new Set<DogStatusFilter>([

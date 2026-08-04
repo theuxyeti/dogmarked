@@ -5,6 +5,11 @@ import maplibregl, { type Map, type MapLayerMouseEvent, type Marker } from "mapl
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { PlaceWithPolicy } from "@/lib/types";
 
+export type MapPlace = PlaceWithPolicy & {
+  saveLayer?: "mine" | "others" | "candidate";
+  saveStatus?: "want_to_go" | "been_there" | "visited";
+};
+
 export type MapClickTarget =
   | { type: "dogmarked"; place: PlaceWithPolicy }
   | {
@@ -18,7 +23,7 @@ export type MapClickTarget =
   | { type: "empty"; lat: number; lng: number };
 
 export interface MapViewProps {
-  places: PlaceWithPolicy[];
+  places: MapPlace[];
   selectedSlug?: string | null;
   initialCenter?: { lat: number; lng: number };
   initialZoom?: number;
@@ -46,16 +51,21 @@ const POI_LAYER_HINTS = [
 function styleUrl() {
   const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
   if (key) {
-    // Detailed streets with POI layers
     return `https://api.maptiler.com/maps/streets-v2/style.json?key=${key}`;
   }
   return "https://demotiles.maplibre.org/style.json";
 }
 
-function statusColorClass(place: PlaceWithPolicy): string {
-  // Identity-only / no policy: muted pin — never imply dog-friendly
-  if (!place.policy) return "dm-policy-marker dm-policy-marker--unverified";
-  return "dm-policy-marker";
+function statusColorClass(place: MapPlace): string {
+  if (place.saveLayer === "candidate") return "dm-marker dm-marker--candidate";
+  if (place.saveLayer === "others") return "dm-marker dm-marker--others";
+  if (place.saveLayer === "mine") {
+    const been = place.saveStatus === "been_there" || place.saveStatus === "visited";
+    return been ? "dm-marker dm-marker--been" : "dm-marker dm-marker--want";
+  }
+  // Legacy / unsaved catalog pins
+  if (!place.policy) return "dm-marker dm-marker--unverified";
+  return "dm-marker dm-marker--been";
 }
 
 export function MapView({
@@ -211,10 +221,7 @@ export function MapView({
       const el = document.createElement("button");
       el.type = "button";
       el.setAttribute("aria-label", place.name);
-      el.className = statusColorClass(place);
-      if (place.policy?.dogStatus) {
-        el.dataset.status = place.policy.dogStatus;
-      }
+      el.className = statusColorClass(place as MapPlace);
       el.dataset.selected = place.slug === selectedSlug ? "true" : "false";
       el.addEventListener("click", (e) => {
         e.stopPropagation();

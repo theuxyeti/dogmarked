@@ -7,20 +7,33 @@ This file is the **architecture + acceptance** source for Dogmarked. Day-to-day 
 
 ---
 
-## Product promise
+## Product promise (simplified MVP — current focus)
 
-> Build your own map of dog-friendly places, discover places shared by others, and understand the actual rules before you arrive.
+> Find a place, save it, tag it, and see it on your map.
 
-Dogmarked is three products on one map:
+Dogmarked is a **personal location map** (apartment-finder / travel-planning energy):
 
-1. **Personal travel map** — visited / want to go / recommended, private notes, trip collections
-2. **Public discovery network** — published contributions, followable maps, community verification
-3. **Structured dog-policy database** — rules, exceptions, evidence, freshness, pack compatibility
+1. Find hotels, restaurants, beaches, parks, and other places (search or map tap).
+2. Save as **Want to go** or **Been there**, with optional note and dog-access badges.
+3. Choose **Private** or **Visible to others**.
+4. Toggle an overlay of **other people’s public pins** on the same map.
 
-Core question: **Can I bring my dog(s) here—and under what conditions?**
+**Not in MVP UI:** Community feed, collections, policy confidence, compatibility scores, affiliates, follow graphs, advanced filters, moderation consoles as primary destinations.
 
-**Foundation separation (must never collapse):**  
-Location → personal save → public contribution → trusted canonical policy
+**Foundation separation (still true for deferred trust work):**  
+Location → personal save → (later) public contribution → (later) trusted canonical policy
+
+---
+
+## Future backlog (deferred from MVP)
+
+These may return later; keep tables/APIs if harmless, but they must not appear in primary navigation:
+
+- Community destination, curated maps, follow users/collections
+- Canonical policy engine, confidence %, compatibility verdicts, moderation queues
+- Affiliate booking CTAs and partner reporting surfaces
+- Trip planning, gamification, alerts, algorithmic discovery
+- Full policy contribution / evidence workflows as the default path
 
 ---
 
@@ -363,9 +376,24 @@ Make Explore feel like a polished, location-driven travel product (map primary).
 
 **Deferred / polish:** tablet drawer chrome polish; persist `external_place_refs` on contribute; FSQ OS Places live key; breakpoint QA sign-off; MapTiler storage-rights confirmation.
 
-**Credentials needed:** apply migrations **009–012** on hosted Supabase; existing `NEXT_PUBLIC_MAPTILER_KEY` for POI search (optional `FOURSQUARE_API_KEY` later).
+**Credentials needed:** existing `NEXT_PUBLIC_MAPTILER_KEY` for POI search (optional `FOURSQUARE_API_KEY` later).
 
 **Phase 9 done when:** map feels populated via basemap POIs (not only seed pins); neutral ≠ dog friendly; desktop/mobile distinct nav & detail; RLS + place routes + auth + Sugar/Munch fixed; tokens used where UI is touched.
+
+### Phase 10 — Simplify and refocus MVP *(active)*
+
+Primary loop only: find → save → tag → map.
+
+- [x] Remove Community / equal-weight nav from primary chrome; map is the app
+- [x] Compact header: wordmark, search, My places / Other people, avatar
+- [x] Map/List toggle; floating Add a place
+- [x] Around here: map click → reverse + nearby candidates → custom place
+- [x] Place composer over map (category, status, dog badges, note, visibility)
+- [x] Preview drawer/sheet (XOR desktop/mobile)
+- [x] Migration **014** — `dog_badges`, `been_there`, public overlay RPC, categories
+- [ ] Apply migration 014 on hosted Supabase
+- [ ] Breakpoint QA + empty-state polish
+- [ ] Provider images / Wikimedia when rights allow (placeholders OK for now)
 
 ---
 
