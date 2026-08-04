@@ -32,7 +32,7 @@ async function loadSaves(): Promise<{
     const { data, error } = await supabase
       .from("user_place_saves")
       .select(
-        "place_id, status, places(id, name, slug, city, category)",
+        "place_id, status, visibility, places(id, name, slug, city, category)",
       )
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
@@ -54,6 +54,7 @@ async function loadSaves(): Promise<{
           slug: place.slug,
           name: place.name,
           status: row.status as SavedLibraryItem["status"],
+          visibility: row.visibility as SavedLibraryItem["visibility"],
           city: place.city,
           category: place.category,
         },

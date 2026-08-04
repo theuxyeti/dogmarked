@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 
 export type SavedLibraryStatus = "want_to_go" | "visited" | "recommended";
 
+export type SavedLibraryVisibility = "private" | "link" | "public";
+
 export interface SavedLibraryItem {
   placeId: string;
   slug: string;
   name: string;
   status: SavedLibraryStatus;
+  visibility?: SavedLibraryVisibility;
   city?: string | null;
   category?: string | null;
 }
@@ -74,12 +77,18 @@ export function SavedLibrary({
   const visibleSections =
     filter === "all" ? SECTIONS : SECTIONS.filter((s) => s.status === filter);
 
-  async function updateStatus(placeId: string, status: SavedLibraryStatus) {
+  async function updateSave(
+    placeId: string,
+    patch: { status?: SavedLibraryStatus; visibility?: SavedLibraryVisibility },
+  ) {
     setMessage(null);
+    const current = items.find((i) => i.placeId === placeId);
+    const status = patch.status ?? current?.status ?? "want_to_go";
+    const visibility = patch.visibility ?? current?.visibility ?? "private";
     const res = await fetch("/api/saves", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ placeId, status, visibility: "private" }),
+      body: JSON.stringify({ placeId, status, visibility }),
     });
     const data = (await res.json()) as { error?: string; message?: string };
     if (!res.ok) {
@@ -87,9 +96,17 @@ export function SavedLibrary({
       return;
     }
     setItems((prev) =>
-      prev.map((item) => (item.placeId === placeId ? { ...item, status } : item)),
+      prev.map((item) =>
+        item.placeId === placeId ? { ...item, status, visibility } : item,
+      ),
     );
-    setMessage("Updated — still private, not published.");
+    setMessage(
+      visibility === "private"
+        ? "Updated — private, not on your public profile."
+        : visibility === "link"
+          ? "Updated — link visibility (not listed on profile)."
+          : "Updated — public on your profile (notes stay private).",
+    );
     startTransition(() => router.refresh());
   }
 
@@ -178,15 +195,31 @@ export function SavedLibrary({
                               value={item.status}
                               disabled={pending}
                               onChange={(e) =>
-                                void updateStatus(
-                                  item.placeId,
-                                  e.target.value as SavedLibraryStatus,
-                                )
+                                void updateSave(item.placeId, {
+                                  status: e.target.value as SavedLibraryStatus,
+                                })
                               }
                             >
                               <option value="want_to_go">Want to go</option>
                               <option value="visited">Visited</option>
                               <option value="recommended">Recommended</option>
+                            </select>
+                          </label>
+                          <label className="text-xs text-muted">
+                            Visibility
+                            <select
+                              className="ml-2 h-9 rounded-lg border border-border bg-card px-2 text-xs text-ink"
+                              value={item.visibility ?? "private"}
+                              disabled={pending}
+                              onChange={(e) =>
+                                void updateSave(item.placeId, {
+                                  visibility: e.target.value as SavedLibraryVisibility,
+                                })
+                              }
+                            >
+                              <option value="private">Private</option>
+                              <option value="link">Link</option>
+                              <option value="public">Public</option>
                             </select>
                           </label>
                           <Button

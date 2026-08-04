@@ -22,14 +22,16 @@ export function BookingCta({ link, placeName, className }: BookingCtaProps) {
   return (
     <div
       className={[
-        "rounded-2xl bg-[var(--sand,#e8dfd2)]/35 px-4 py-4",
+        "rounded-2xl border border-border/60 bg-sand/35 px-4 py-4",
+        // Visually separated from policy confidence / match scoring
+        "ring-1 ring-inset ring-teal/10",
         className ?? "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink,#1c2421)]/55">
-        Booking
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        Booking · partner link
       </p>
       {enabled && link ? (
         <a

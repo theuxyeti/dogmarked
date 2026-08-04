@@ -1,19 +1,28 @@
 <tldr>
-Living tracker: [`docs/roadmap.md`](docs/roadmap.md). Phase 1 core loop + Explore URL/filters + Saved status workflows + Add-by-location are in. Apply new migration `places_location_sync` on Supabase, then smoke-test live.
+Phases 1–4 largely wired; Community now loads live public maps/verified places. **You:** apply migrations `…204`, `…205`, `…206` on hosted Supabase, then smoke-test.
 </tldr>
 
-## Active
+## Needs you
 
-- [ ] Apply migration `20260304120400_places_location_sync.sql` on hosted Supabase
-- [ ] Live smoke: sign in → create → save → change status on Saved → publish
-- [ ] Breakpoint QA pass (Phase 2)
+- [ ] Apply on Supabase SQL Editor:
+  - `20260304120400_places_location_sync.sql`
+  - `20260304120500_public_profile_saves.sql`
+  - `20260304120600_policy_reports.sql`
+- [ ] Live smoke: sign in → create place → save (visibility) → collection → publish → report
 
-## Done this session
+## Active (code)
 
-- [x] `docs/roadmap.md` phase board
-- [x] Create place API + Add flow
-- [x] Saves GET + Saved from Supabase
-- [x] Auth-aware header
-- [x] Explore URL state + category/policy/layer filters
-- [x] Saved status change + remove
-- [x] Add by current location + coordinates
+- [ ] Breakpoint QA (Phase 2)
+- [ ] Evidence photo uploads with licensing (Phase 4)
+- [ ] Follow graph persistence (Phase 6)
+- [ ] OSM import job (Phase 7)
+
+## Done recently
+
+- [x] Collections API + create/detail/share visibility
+- [x] Public `/u/[handle]` + public saves RPC
+- [x] Save visibility private/link/public
+- [x] Report incorrect + mark closed
+- [x] Moderation queue loads live contributions/reports
+- [x] Policy form on Add + policy history on place page
+- [x] Community tab from Supabase (public collections / verified / needs check)

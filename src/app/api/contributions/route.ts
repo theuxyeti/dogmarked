@@ -72,7 +72,8 @@ export async function POST(request: Request) {
   }
 
   const payload = parsed.data;
-  const moderationStatus = payload.promote ? "published" : "draft";
+  // RLS only allows client insert as draft/in_review; promote RPC publishes.
+  const moderationStatus = payload.promote ? "in_review" : "draft";
 
   const { data: contribution, error } = await supabase
     .from("policy_contributions")
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
       source_type: payload.sourceType ?? "firsthand",
       source_url: payload.sourceUrl || null,
       moderation_status: moderationStatus,
-      observed_at: new Date().toISOString(),
+      observed_at: new Date().toISOString().slice(0, 10),
     })
     .select("id")
     .single();

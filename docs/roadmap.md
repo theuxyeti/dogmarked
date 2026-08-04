@@ -22,8 +22,8 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 ## Current focus
 
-**Active:** Phase 2/3 polish — Explore filters + URL state, Saved workflows, Add-by-location  
-**Next:** Live smoke test, then collections sync / public profile depth
+**Active:** Apply hosted Supabase migrations + live smoke test  
+**Next:** Breakpoint QA, then Phase 5 seasonal / Phase 7 OSM when ready
 
 ---
 
@@ -96,10 +96,10 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 | Item | Status |
 |---|---|
 | Want / visited / recommended workflows | ✅ |
-| Collections + shareable URLs | 🟡 |
-| Link visibility for saves/collections | 🟡 |
+| Collections + shareable URLs | ✅ |
+| Link visibility for saves/collections | ✅ |
 | Add by address / map pin / current location / coordinates | ✅ |
-| Public profile shell (`/u/[handle]`) | 🟡 |
+| Public profile shell (`/u/[handle]`) | ✅ |
 
 ---
 
@@ -107,13 +107,13 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 | Item | Status |
 |---|---|
-| Full policy form | 🟡 |
-| Official policy vs known exception UX | 🟡 |
+| Full policy form | ✅ |
+| Official policy vs known exception UX | ✅ |
 | Evidence photos with licensing checks | ⬜ |
-| Confirmations + report incorrect | ⬜ |
-| Conflict resolution + version history UI | 🟡 |
-| Moderation queue + audit log | 🟡 |
-| Closed-place handling | ⬜ |
+| Confirmations + report incorrect | ✅ |
+| Conflict resolution + version history UI | ✅ |
+| Moderation queue + audit log | ✅ |
+| Closed-place handling | ✅ |
 
 ---
 
@@ -121,8 +121,8 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 | Item | Status |
 |---|---|
-| Multi-dog + combined weight + carrier edge cases | 🟡 |
-| kg/lb, currency display, locale dates | 🟡 |
+| Multi-dog + combined weight + carrier edge cases | ✅ |
+| kg/lb, currency display, locale dates | ✅ |
 | i18n framework + EN strings | 🟡 |
 | Country address formatting + service-animal copy | 🟡 |
 | Seasonal policy display | ⬜ |
@@ -134,7 +134,7 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 | Item | Status |
 |---|---|
 | Follow users and collections | 🟡 |
-| Community tab surfaces | 🟡 |
+| Community tab surfaces | ✅ |
 | Contribution history on profiles | ⬜ |
 | No algorithmic For You feed | ✅ (by design) |
 
@@ -157,9 +157,9 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 | Item | Status |
 |---|---|
-| Affiliate links, booking CTAs, disclosure, click attribution | 🟡 |
+| Affiliate links, booking CTAs, disclosure, click attribution | ✅ |
 | Partner reporting | ⬜ |
-| Promoted placements visually separated | 🟡 |
+| Promoted placements visually separated | ✅ |
 | Confidence scoring ignores affiliate data | ✅ |
 
 ---
@@ -167,10 +167,10 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 ## Build order
 
 1. Establish reproducible infrastructure (Phase 0) — **complete**
-2. Prove the complete Dogmarked core loop (Phase 1) — **active**
-3. Harden the map experience (Phase 2)
-4. Expand personal organization (Phase 3)
-5. Deepen trust and moderation (Phase 4)
+2. Prove the complete Dogmarked core loop (Phase 1) — **complete**
+3. Harden the map experience (Phase 2) — **QA left**
+4. Expand personal organization (Phase 3) — **complete**
+5. Deepen trust and moderation (Phase 4) — **mostly complete** (evidence photos pending)
 6. Add worldwide matching (Phase 5)
 7. Grow community and imported coverage (Phases 6–7)
 8. Monetize only after trust is established (Phase 8)
