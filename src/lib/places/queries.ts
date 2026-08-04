@@ -35,6 +35,9 @@ function mapPolicy(row: Record<string, unknown>, placeId: string): DogPolicy {
     feeAmount: (row.fee_amount as number | null) ?? null,
     feeCurrency: (row.fee_currency as string | null) ?? "USD",
     exceptionText: (row.exception_text as string | null) ?? null,
+    seasonalNotes: (row.seasonal_notes as string | null) ?? null,
+    seasonalStartMonth: (row.seasonal_start_month as number | null) ?? null,
+    seasonalEndMonth: (row.seasonal_end_month as number | null) ?? null,
     sourceType: (row.source_type as string | null) ?? null,
     sourceUrl: (row.source_url as string | null) ?? null,
     confidence:
@@ -116,30 +119,49 @@ export async function getPlacesInBbox(bbox: Bbox): Promise<PlaceWithPolicy[]> {
   }
 }
 
+/** Alternate public slugs → canonical slug (or same place id lookup). */
+const PLACE_SLUG_ALIASES: Record<string, string> = {
+  "hale-patisserie": "hale-patisserie-coral-gables",
+};
+
+function resolvePlaceSlug(slug: string): string {
+  return PLACE_SLUG_ALIASES[slug] ?? slug;
+}
+
+function findFixtureBySlug(slug: string): PlaceWithPolicy | null {
+  const resolved = resolvePlaceSlug(slug);
+  return (
+    SOUTH_FLORIDA_PLACES.find((p) => p.slug === resolved || p.slug === slug) ?? null
+  );
+}
+
 export async function getPlaceBySlug(slug: string): Promise<PlaceWithPolicy | null> {
+  const resolved = resolvePlaceSlug(slug);
+
   if (!isSupabaseConfigured()) {
-    return SOUTH_FLORIDA_PLACES.find((p) => p.slug === slug) ?? null;
+    return findFixtureBySlug(slug);
   }
 
   try {
     const supabase = await getSupabase();
     if (!supabase) {
-      return SOUTH_FLORIDA_PLACES.find((p) => p.slug === slug) ?? null;
+      return findFixtureBySlug(slug);
     }
 
     const { data, error } = await supabase
       .from("places")
       .select("*, dog_policies(*)")
-      .eq("slug", slug)
+      .in("slug", [...new Set([slug, resolved])])
+      .limit(1)
       .maybeSingle();
 
     if (error || !data) {
-      return SOUTH_FLORIDA_PLACES.find((p) => p.slug === slug) ?? null;
+      return findFixtureBySlug(slug);
     }
 
     return mapPlaceRow(data as Record<string, unknown>);
   } catch {
-    return SOUTH_FLORIDA_PLACES.find((p) => p.slug === slug) ?? null;
+    return findFixtureBySlug(slug);
   }
 }
 

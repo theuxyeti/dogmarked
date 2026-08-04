@@ -1,3 +1,4 @@
+-- Migration 001 — core schema
 -- Phase 1 core schema: places, saves, dog policies, contributions, evidence, audit
 
 -- ---------------------------------------------------------------------------

@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { CollectionDetailClient } from "@/app/collections/[slug]/collection-detail-client";
 import {
-  getLocalCollectionBySlug,
-  southFloridaDemoCollection,
-} from "@/lib/collections";
+  getOwnedCollectionBySlug,
+  getPlacesForCollection,
+} from "@/lib/collections/server";
+import { isSupabaseConfigured } from "@/lib/utils";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -10,77 +13,70 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
-  const collection =
-    getLocalCollectionBySlug(slug) ??
-    (slug === "south-florida-with-dogs" ? southFloridaDemoCollection() : null);
-  return {
-    title: collection
-      ? `${collection.title} · Dogmarked`
-      : "Collection · Dogmarked",
-  };
+  return { title: `${slug.replace(/-/g, " ")} · Collections · Dogmarked` };
 }
 
-/**
- * Owner view of a collection map (placeholder until MapLibre wiring).
- */
 export default async function CollectionMapPage({ params }: PageProps) {
   const { slug } = await params;
-  const collection =
-    getLocalCollectionBySlug(slug) ??
-    (slug === "south-florida-with-dogs" ? southFloridaDemoCollection() : null);
 
-  if (!collection) {
+  if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto max-w-lg px-4 py-16">
-        <h1 className="text-xl font-medium">Collection not found</h1>
-        <Link
-          href="/collections"
-          className="mt-4 inline-block text-[var(--teal,#0f5c56)] underline"
-        >
+        <h1 className="text-xl font-medium">Supabase not configured</h1>
+        <Link href="/collections" className="mt-4 inline-block text-teal-deep underline">
           Back to collections
         </Link>
       </main>
     );
   }
 
-  return (
-    <main className="flex min-h-[100dvh] flex-col">
-      <header className="border-b border-[var(--ink,#1c2421)]/10 px-4 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
-        <Link
-          href="/collections"
-          className="text-sm text-[var(--teal,#0f5c56)]"
-        >
-          ← Collections
-        </Link>
-        <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl text-[var(--ink,#1c2421)]">
-          {collection.title}
-        </h1>
-        {collection.description ? (
-          <p className="mt-1 text-sm text-[var(--ink,#1c2421)]/70">
-            {collection.description}
-          </p>
-        ) : null}
-      </header>
+  const { createClient } = await import("@/lib/supabase/server");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-      <div className="relative flex flex-1 items-center justify-center bg-[linear-gradient(160deg,var(--sand,#e8dfd2)_0%,var(--paper,#f7f4ef)_45%,#cfe3df_100%)]">
-        <div className="max-w-sm px-6 text-center">
-          <p className="font-[family-name:var(--font-display)] text-xl text-[var(--ink,#1c2421)]">
-            Collection map
-          </p>
-          <p className="mt-2 text-sm text-[var(--ink,#1c2421)]/65">
-            MapLibre view for this collection will mount here — same basemap as
-            Explore, filtered to {collection.placeIds.length || "saved"} places.
-          </p>
-          {collection.ownerHandle ? (
-            <Link
-              href={`/u/${collection.ownerHandle}/${collection.slug}`}
-              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full bg-[var(--teal,#0f5c56)] px-5 text-sm font-medium text-white"
-            >
-              Open public URL
-            </Link>
-          ) : null}
-        </div>
-      </div>
-    </main>
+  if (!user) {
+    redirect(`/login?next=/collections/${slug}`);
+  }
+
+  const collection = await getOwnedCollectionBySlug(user.id, slug);
+  if (!collection) notFound();
+
+  const places = await getPlacesForCollection(collection.placeIds);
+  const { data: saves } = await supabase
+    .from("user_place_saves")
+    .select("place_id, places(id, name, slug)")
+    .eq("user_id", user.id);
+
+  const saveOptions = (saves ?? []).flatMap((row) => {
+    const placeRaw = row.places as
+      | { id: string; name: string; slug: string }
+      | { id: string; name: string; slug: string }[]
+      | null;
+    const place = Array.isArray(placeRaw) ? placeRaw[0] : placeRaw;
+    if (!place) return [];
+    return [{ placeId: place.id, name: place.name, slug: place.slug }];
+  });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("handle")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return (
+    <CollectionDetailClient
+      collection={collection}
+      places={places.map((p) => ({
+        id: String(p.id),
+        name: String(p.name),
+        slug: String(p.slug),
+        city: (p.city as string | null) ?? null,
+        category: String(p.category),
+      }))}
+      saveOptions={saveOptions}
+      handle={profile?.handle ?? null}
+    />
   );
 }

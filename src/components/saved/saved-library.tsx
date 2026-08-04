@@ -1,15 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 export type SavedLibraryStatus = "want_to_go" | "visited" | "recommended";
+
+export type SavedLibraryVisibility = "private" | "link" | "public";
 
 export interface SavedLibraryItem {
   placeId: string;
   slug: string;
   name: string;
   status: SavedLibraryStatus;
+  visibility?: SavedLibraryVisibility;
   city?: string | null;
   category?: string | null;
 }
@@ -38,19 +43,24 @@ const SECTIONS: {
 
 export interface SavedLibraryProps {
   items?: SavedLibraryItem[];
-  /** Optional heading override when embedded in /saved */
   title?: string;
+  interactive?: boolean;
 }
 
-/**
- * Want / visited / recommended sections for the personal library.
- * Mount from `saved/page.tsx` when Explore agent stubs that route.
- */
 export function SavedLibrary({
-  items = [],
+  items: initialItems = [],
   title = "Saved",
+  interactive = true,
 }: SavedLibraryProps) {
+  const router = useRouter();
+  const [items, setItems] = useState(initialItems);
   const [filter, setFilter] = useState<SavedLibraryStatus | "all">("all");
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
 
   const grouped = useMemo(() => {
     const map: Record<SavedLibraryStatus, SavedLibraryItem[]> = {
@@ -67,14 +77,60 @@ export function SavedLibrary({
   const visibleSections =
     filter === "all" ? SECTIONS : SECTIONS.filter((s) => s.status === filter);
 
+  async function updateSave(
+    placeId: string,
+    patch: { status?: SavedLibraryStatus; visibility?: SavedLibraryVisibility },
+  ) {
+    setMessage(null);
+    const current = items.find((i) => i.placeId === placeId);
+    const status = patch.status ?? current?.status ?? "want_to_go";
+    const visibility = patch.visibility ?? current?.visibility ?? "private";
+    const res = await fetch("/api/saves", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placeId, status, visibility }),
+    });
+    const data = (await res.json()) as { error?: string; message?: string };
+    if (!res.ok) {
+      setMessage(data.error ?? "Could not update save.");
+      return;
+    }
+    setItems((prev) =>
+      prev.map((item) =>
+        item.placeId === placeId ? { ...item, status, visibility } : item,
+      ),
+    );
+    setMessage(
+      visibility === "private"
+        ? "Updated — private, not on your public profile."
+        : visibility === "link"
+          ? "Updated — link visibility (not listed on profile)."
+          : "Updated — public on your profile (notes stay private).",
+    );
+    startTransition(() => router.refresh());
+  }
+
+  async function removeSave(placeId: string) {
+    setMessage(null);
+    const res = await fetch(`/api/saves?placeId=${encodeURIComponent(placeId)}`, {
+      method: "DELETE",
+    });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) {
+      setMessage(data.error ?? "Could not remove save.");
+      return;
+    }
+    setItems((prev) => prev.filter((item) => item.placeId !== placeId));
+    setMessage("Removed from your personal map.");
+    startTransition(() => router.refresh());
+  }
+
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-28 pt-[max(1.25rem,env(safe-area-inset-top))]">
+    <div className="mx-auto max-w-2xl px-4 pb-8 pt-[max(1.25rem,env(safe-area-inset-top))]">
       <header className="mb-6">
-        <p className="font-[family-name:var(--font-display)] text-3xl text-[var(--ink,#1c2421)]">
-          Dogmarked
-        </p>
-        <h1 className="mt-2 text-xl font-medium">{title}</h1>
-        <p className="mt-1 text-sm text-[var(--ink,#1c2421)]/65">
+        <p className="font-display text-3xl text-teal-deep">Dogmarked</p>
+        <h1 className="mt-2 text-xl font-medium text-ink">{title}</h1>
+        <p className="mt-1 text-sm text-muted">
           Your personal map — private by default. Publishing policy is separate.
         </p>
       </header>
@@ -102,40 +158,81 @@ export function SavedLibrary({
             <section key={section.status} aria-labelledby={`saved-${section.status}`}>
               <h2
                 id={`saved-${section.status}`}
-                className="text-sm font-semibold uppercase tracking-wide text-[var(--teal,#0f5c56)]"
+                className="text-sm font-semibold uppercase tracking-wide text-teal-deep"
               >
                 {section.title}
-                <span className="ml-2 font-normal text-[var(--ink,#1c2421)]/45">
-                  {list.length}
-                </span>
+                <span className="ml-2 font-normal text-muted">{list.length}</span>
               </h2>
               {list.length === 0 ? (
-                <p className="mt-2 text-sm text-[var(--ink,#1c2421)]/55">
-                  {section.empty}
-                </p>
+                <p className="mt-2 text-sm text-muted">{section.empty}</p>
               ) : (
                 <ul className="mt-3 flex flex-col gap-2">
                   {list.map((item) => (
-                    <li key={item.placeId}>
-                      <Link
-                        href={`/place/${item.slug}`}
-                        className="flex min-h-11 items-center justify-between rounded-xl px-3 py-2 hover:bg-[var(--sand,#e8dfd2)]/40"
-                      >
-                        <span>
-                          <span className="font-medium text-[var(--ink,#1c2421)]">
-                            {item.name}
-                          </span>
+                    <li
+                      key={item.placeId}
+                      className="rounded-xl border border-border/70 bg-card/60 px-3 py-2"
+                    >
+                      <div className="flex min-h-11 items-center justify-between gap-3">
+                        <Link href={`/place/${item.slug}`} className="min-w-0 flex-1">
+                          <span className="font-medium text-ink">{item.name}</span>
                           {item.city ? (
-                            <span className="mt-0.5 block text-xs text-[var(--ink,#1c2421)]/55">
+                            <span className="mt-0.5 block text-xs text-muted">
                               {item.city}
                               {item.category ? ` · ${item.category}` : ""}
                             </span>
                           ) : null}
-                        </span>
-                        <span aria-hidden className="text-[var(--ink,#1c2421)]/35">
+                        </Link>
+                        <span aria-hidden className="text-muted">
                           →
                         </span>
-                      </Link>
+                      </div>
+                      {interactive ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <label className="text-xs text-muted">
+                            Status
+                            <select
+                              className="ml-2 h-9 rounded-lg border border-border bg-card px-2 text-xs text-ink"
+                              value={item.status}
+                              disabled={pending}
+                              onChange={(e) =>
+                                void updateSave(item.placeId, {
+                                  status: e.target.value as SavedLibraryStatus,
+                                })
+                              }
+                            >
+                              <option value="want_to_go">Want to go</option>
+                              <option value="visited">Visited</option>
+                              <option value="recommended">Recommended</option>
+                            </select>
+                          </label>
+                          <label className="text-xs text-muted">
+                            Visibility
+                            <select
+                              className="ml-2 h-9 rounded-lg border border-border bg-card px-2 text-xs text-ink"
+                              value={item.visibility ?? "private"}
+                              disabled={pending}
+                              onChange={(e) =>
+                                void updateSave(item.placeId, {
+                                  visibility: e.target.value as SavedLibraryVisibility,
+                                })
+                              }
+                            >
+                              <option value="private">Private</option>
+                              <option value="link">Link</option>
+                              <option value="public">Public</option>
+                            </select>
+                          </label>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={pending}
+                            onClick={() => void removeSave(item.placeId)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -145,9 +242,11 @@ export function SavedLibrary({
         })}
       </div>
 
-      <p className="mt-10 text-sm text-[var(--ink,#1c2421)]/55">
+      {message ? <p className="mt-4 text-sm text-muted">{message}</p> : null}
+
+      <p className="mt-10 text-sm text-muted">
         Organize trips in{" "}
-        <Link href="/collections" className="text-[var(--teal,#0f5c56)] underline">
+        <Link href="/collections" className="text-teal-deep underline">
           Collections
         </Link>
         .
@@ -171,9 +270,7 @@ function FilterChip({
       onClick={onClick}
       className={[
         "min-h-11 rounded-full px-3 text-sm transition",
-        active
-          ? "bg-[var(--teal,#0f5c56)] text-white"
-          : "bg-[var(--sand,#e8dfd2)]/50 text-[var(--ink,#1c2421)]",
+        active ? "bg-teal text-primary-foreground" : "bg-foam text-ink",
       ].join(" ")}
     >
       {label}

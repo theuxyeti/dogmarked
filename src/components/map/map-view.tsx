@@ -1,51 +1,99 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import maplibregl, { type Map, type Marker } from "maplibre-gl";
+import maplibregl, { type Map, type MapLayerMouseEvent, type Marker } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { PlaceWithPolicy } from "@/lib/types";
+
+export type MapClickTarget =
+  | { type: "dogmarked"; place: PlaceWithPolicy }
+  | {
+      type: "contextual_poi";
+      name: string;
+      lat: number;
+      lng: number;
+      layerId?: string;
+      properties?: Record<string, unknown>;
+    }
+  | { type: "empty"; lat: number; lng: number };
 
 export interface MapViewProps {
   places: PlaceWithPolicy[];
   selectedSlug?: string | null;
+  initialCenter?: { lat: number; lng: number };
+  initialZoom?: number;
+  flyTo?: { lat: number; lng: number; zoom?: number } | null;
   onSelect?: (place: PlaceWithPolicy) => void;
+  onMapClick?: (target: MapClickTarget) => void;
   onBoundsChange?: (bbox: {
     minLng: number;
     minLat: number;
     maxLng: number;
     maxLat: number;
   }) => void;
+  onViewportChange?: (viewport: { lat: number; lng: number; zoom: number }) => void;
   className?: string;
 }
+
+const POI_LAYER_HINTS = [
+  "poi",
+  "housenumber",
+  "place_label",
+  "airport_label",
+  "transit",
+];
 
 function styleUrl() {
   const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
   if (key) {
+    // Detailed streets with POI layers
     return `https://api.maptiler.com/maps/streets-v2/style.json?key=${key}`;
   }
   return "https://demotiles.maplibre.org/style.json";
 }
 
+function statusColorClass(place: PlaceWithPolicy): string {
+  // Identity-only / no policy: muted pin — never imply dog-friendly
+  if (!place.policy) return "dm-policy-marker dm-policy-marker--unverified";
+  return "dm-policy-marker";
+}
+
 export function MapView({
   places,
   selectedSlug,
+  initialCenter,
+  initialZoom,
+  flyTo,
   onSelect,
+  onMapClick,
   onBoundsChange,
+  onViewportChange,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const onSelectRef = useRef(onSelect);
+  const onMapClickRef = useRef(onMapClick);
   const onBoundsRef = useRef(onBoundsChange);
+  const onViewportRef = useRef(onViewportChange);
+  const placesRef = useRef(places);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
   }, [onSelect]);
-
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
   useEffect(() => {
     onBoundsRef.current = onBoundsChange;
   }, [onBoundsChange]);
+  useEffect(() => {
+    onViewportRef.current = onViewportChange;
+  }, [onViewportChange]);
+  useEffect(() => {
+    placesRef.current = places;
+  }, [places]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -53,8 +101,8 @@ export function MapView({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: styleUrl(),
-      center: [-80.14, 26.05],
-      zoom: 9.2,
+      center: [initialCenter?.lng ?? -80.14, initialCenter?.lat ?? 26.05],
+      zoom: initialZoom ?? 9.2,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
@@ -68,16 +116,78 @@ export function MapView({
 
     const emitBounds = () => {
       const b = map.getBounds();
+      const c = map.getCenter();
       onBoundsRef.current?.({
         minLng: b.getWest(),
         minLat: b.getSouth(),
         maxLng: b.getEast(),
         maxLat: b.getNorth(),
       });
+      onViewportRef.current?.({
+        lat: c.lat,
+        lng: c.lng,
+        zoom: map.getZoom(),
+      });
     };
 
-    map.on("load", emitBounds);
+    map.on("load", () => {
+      emitBounds();
+      // Progressive POI reveal: soften low-zoom POI opacity when layers exist
+      try {
+        const style = map.getStyle();
+        for (const layer of style?.layers ?? []) {
+          if (
+            layer.type === "symbol" &&
+            POI_LAYER_HINTS.some((h) => layer.id.toLowerCase().includes(h))
+          ) {
+            map.setPaintProperty(layer.id, "text-opacity", [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              11,
+              0,
+              13,
+              0.55,
+              15,
+              1,
+            ]);
+          }
+        }
+      } catch {
+        // style may not expose paint props for all layers
+      }
+    });
     map.on("moveend", emitBounds);
+
+    map.on("click", (e: MapLayerMouseEvent) => {
+      // Dogmarked DOM markers stopPropagation — this handles basemap / empty
+      const features = map.queryRenderedFeatures(e.point);
+      const poi = features.find((f) =>
+        POI_LAYER_HINTS.some((h) => f.layer.id.toLowerCase().includes(h)),
+      );
+
+      if (poi) {
+        const name =
+          (poi.properties?.name as string | undefined) ||
+          (poi.properties?.name_en as string | undefined) ||
+          "Place";
+        onMapClickRef.current?.({
+          type: "contextual_poi",
+          name,
+          lat: e.lngLat.lat,
+          lng: e.lngLat.lng,
+          layerId: poi.layer.id,
+          properties: (poi.properties as Record<string, unknown>) ?? {},
+        });
+        return;
+      }
+
+      onMapClickRef.current?.({
+        type: "empty",
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
+      });
+    });
 
     mapRef.current = map;
 
@@ -87,6 +197,7 @@ export function MapView({
       map.remove();
       mapRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -100,14 +211,15 @@ export function MapView({
       const el = document.createElement("button");
       el.type = "button";
       el.setAttribute("aria-label", place.name);
-      el.className =
-        place.slug === selectedSlug
-          ? "h-4 w-4 rounded-full border-2 border-white bg-teal-deep shadow-md"
-          : "h-3.5 w-3.5 rounded-full border-2 border-white bg-teal shadow";
-      el.style.cursor = "pointer";
+      el.className = statusColorClass(place);
+      if (place.policy?.dogStatus) {
+        el.dataset.status = place.policy.dogStatus;
+      }
+      el.dataset.selected = place.slug === selectedSlug ? "true" : "false";
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         onSelectRef.current?.(place);
+        onMapClickRef.current?.({ type: "dogmarked", place });
       });
 
       const marker = new maplibregl.Marker({ element: el })
@@ -124,6 +236,16 @@ export function MapView({
     if (!place) return;
     map.easeTo({ center: [place.lng, place.lat], offset: [0, 40], duration: 500 });
   }, [selectedSlug, places]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !flyTo) return;
+    map.flyTo({
+      center: [flyTo.lng, flyTo.lat],
+      zoom: flyTo.zoom ?? Math.max(map.getZoom(), 14),
+      essential: true,
+    });
+  }, [flyTo]);
 
   return <div ref={containerRef} className={className ?? "h-full w-full"} />;
 }

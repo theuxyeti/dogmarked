@@ -23,6 +23,9 @@ function basePolicy(overrides: Partial<DogPolicy> = {}): DogPolicy {
     feeAmount: null,
     feeCurrency: "USD",
     exceptionText: null,
+    seasonalNotes: null,
+    seasonalStartMonth: null,
+    seasonalEndMonth: null,
     sourceType: "official",
     sourceUrl: null,
     confidence: 0.8,
@@ -59,18 +62,29 @@ describe("computeCompatibility", () => {
   it("combined weight over limit → not_a_match", () => {
     const result = computeCompatibility(
       sugarAndMunch,
-      basePolicy({ maxCombinedWeightKg: 20 }),
+      basePolicy({ maxCombinedWeightKg: 4 }),
     );
     expect(result.verdict).toBe("not_a_match");
   });
 
-  it("carrier required when Munch does not travel in carrier → ask_first", () => {
+  it("carrier required when a dog does not travel in carrier → ask_first", () => {
+    const pack = sugarAndMunch.map((d, i) =>
+      i === 1 ? { ...d, travelsInCarrier: false } : d,
+    );
     const result = computeCompatibility(
-      sugarAndMunch,
+      pack,
       basePolicy({ carrierRequired: true }),
     );
     expect(result.verdict).toBe("ask_first");
     expect(result.reasons.some((r) => /carrier required/i.test(r))).toBe(true);
+  });
+
+  it("Sugar + Munch both carrier travelers when required → good_match", () => {
+    const result = computeCompatibility(
+      sugarAndMunch,
+      basePolicy({ carrierRequired: true }),
+    );
+    expect(result.verdict).toBe("good_match");
   });
 
   it("no_dogs status → not_a_match", () => {

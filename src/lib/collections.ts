@@ -1,6 +1,7 @@
 /**
  * Collections — personal/shared maps of places (Phase 3).
- * localStorage fallback for offline/dev; Supabase helpers are stubs until RLS tables land.
+ * Browser localStorage helpers remain for offline demos.
+ * Live CRUD uses `/api/collections` + `src/lib/collections/server.ts` (Supabase + RLS).
  */
 
 export type CollectionVisibility = "private" | "link" | "public";
@@ -104,18 +105,16 @@ export function publicCollectionPath(
   return `/u/${encodeURIComponent(handle)}/${encodeURIComponent(collectionSlug)}`;
 }
 
-/** Stub: fetch collections for current user from Supabase when wired. */
-export async function fetchUserCollections(_userId: string): Promise<Collection[]> {
-  // TODO: supabase.from('collections').select(...).eq('owner_id', userId)
-  return listLocalCollections(_userId);
+/** Prefer server helpers in `collections/server.ts` for authenticated requests. */
+export async function fetchUserCollections(userId: string): Promise<Collection[]> {
+  return listLocalCollections(userId);
 }
 
-/** Stub: fetch a public/link collection by handle + slug. */
+/** Local fallback only — public pages use `getSharedCollectionByHandleSlug`. */
 export async function fetchPublicCollection(
   handle: string,
   collectionSlug: string,
 ): Promise<Collection | null> {
-  // TODO: join profiles.handle + collections.slug with visibility filter
   const local = listLocalCollections().find(
     (c) =>
       c.ownerHandle === handle &&

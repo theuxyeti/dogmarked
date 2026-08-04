@@ -26,7 +26,9 @@ export default function LoginPage() {
       return;
     }
 
-    const redirectTo = `${window.location.origin}/auth/callback?next=/explore`;
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next") || "/explore";
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
     const { error: signInError } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: redirectTo },

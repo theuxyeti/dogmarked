@@ -53,3 +53,8 @@ export function withAffiliateDisclosure(link: AffiliateLink | null | undefined):
     enabled: true,
   };
 }
+
+/** Same-origin hop that records attribution before leaving to the partner. */
+export function affiliateClickPath(linkId: string): string {
+  return `/api/affiliates/click?id=${encodeURIComponent(linkId)}`;
+}

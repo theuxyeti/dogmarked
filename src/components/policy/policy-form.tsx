@@ -47,9 +47,16 @@ export interface PolicyFormValues {
   feeAmount: number | null;
   feeCurrency: string;
   exceptionText: string;
+  seasonalNotes: string;
+  seasonalStartMonth: number | null;
+  seasonalEndMonth: number | null;
   sourceType: PolicySourceType;
   sourceUrl: string;
   observedAt: string;
+  evidenceUrl: string;
+  evidenceNote: string;
+  evidenceAttribution: string;
+  evidenceLicense: string;
 }
 
 export const EMPTY_POLICY_FORM: PolicyFormValues = {
@@ -66,9 +73,16 @@ export const EMPTY_POLICY_FORM: PolicyFormValues = {
   feeAmount: null,
   feeCurrency: "USD",
   exceptionText: "",
+  seasonalNotes: "",
+  seasonalStartMonth: null,
+  seasonalEndMonth: null,
   sourceType: "firsthand",
   sourceUrl: "",
   observedAt: "",
+  evidenceUrl: "",
+  evidenceNote: "",
+  evidenceAttribution: "",
+  evidenceLicense: "",
 };
 
 const STATUS_OPTIONS: { value: PolicyDogStatus; label: string }[] = [
@@ -89,11 +103,34 @@ const ACCESS_OPTIONS: { value: PolicyAccess; label: string }[] = [
   { value: "common_areas", label: "Common areas" },
 ];
 
+const MONTHS = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
+
+export interface PolicyFormExtras {
+  evidenceFile: File | null;
+  confirmPermanentStorage: boolean;
+}
+
 export interface PolicyFormProps {
   initial?: Partial<PolicyFormValues>;
   placeName?: string;
   submitLabel?: string;
-  onSubmit: (values: PolicyFormValues) => void | Promise<void>;
+  onSubmit: (
+    values: PolicyFormValues,
+    extras: PolicyFormExtras,
+  ) => void | Promise<void>;
 }
 
 /**
@@ -111,6 +148,8 @@ export function PolicyForm({
     ...initial,
     access: initial?.access ?? EMPTY_POLICY_FORM.access,
   });
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [confirmPermanentStorage, setConfirmPermanentStorage] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,7 +175,19 @@ export function PolicyForm({
         setError(null);
         setPending(true);
         try {
-          await onSubmit(values);
+          if (evidenceFile && !confirmPermanentStorage) {
+            setError(
+              "Confirm you have rights to store this photo permanently, or remove the file and use a link instead.",
+            );
+            setPending(false);
+            return;
+          }
+          if (evidenceFile && !values.evidenceLicense.trim()) {
+            setError("License is required when uploading a permanent evidence photo.");
+            setPending(false);
+            return;
+          }
+          await onSubmit(values, { evidenceFile, confirmPermanentStorage });
         } catch (err) {
           setError(err instanceof Error ? err.message : "Submit failed");
         } finally {
@@ -304,6 +355,128 @@ export function PolicyForm({
           placeholder="Known exceptions to the official policy…"
           value={values.exceptionText}
           onChange={(e) => patch({ exceptionText: e.target.value })}
+        />
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-3">
+        <legend className="text-sm font-semibold uppercase tracking-wide text-[var(--teal,#0f5c56)]">
+          Seasonal
+        </legend>
+        <p className="text-xs text-[var(--ink,#1c2421)]/55">
+          Optional months when dog access differs (e.g. beach season).
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            Start month
+            <select
+              className="min-h-11 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3"
+              value={values.seasonalStartMonth ?? ""}
+              onChange={(e) =>
+                patch({
+                  seasonalStartMonth: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+            >
+              <option value="">—</option>
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            End month
+            <select
+              className="min-h-11 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3"
+              value={values.seasonalEndMonth ?? ""}
+              onChange={(e) =>
+                patch({
+                  seasonalEndMonth: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+            >
+              <option value="">—</option>
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <textarea
+          className="min-h-20 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3 py-2 text-sm"
+          placeholder="Seasonal notes (e.g. dogs on beach Oct–May only)…"
+          value={values.seasonalNotes}
+          onChange={(e) => patch({ seasonalNotes: e.target.value })}
+        />
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-3">
+        <legend className="text-sm font-semibold uppercase tracking-wide text-[var(--teal,#0f5c56)]">
+          Evidence
+        </legend>
+        <p className="text-xs text-[var(--ink,#1c2421)]/55">
+          Prefer a link unless you own the photo (or have storage rights). MapTiler / OSM /
+          partner images stay link-only.
+        </p>
+        <label className="flex flex-col gap-1 text-sm">
+          Evidence URL
+          <input
+            type="url"
+            className="min-h-11 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3"
+            placeholder="https://"
+            value={values.evidenceUrl}
+            onChange={(e) => patch({ evidenceUrl: e.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          Upload photo (optional, permanent storage)
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="min-h-11 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3 py-2 text-sm file:mr-3"
+            onChange={(e) => setEvidenceFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {evidenceFile ? (
+          <label className="flex items-start gap-2 text-sm text-[var(--ink,#1c2421)]/80">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={confirmPermanentStorage}
+              onChange={(e) => setConfirmPermanentStorage(e.target.checked)}
+            />
+            <span>
+              I own this photo or have rights to store it permanently in Dogmarked
+              (not scraped from MapTiler/OSM/partners).
+            </span>
+          </label>
+        ) : null}
+        <label className="flex flex-col gap-1 text-sm">
+          Attribution
+          <input
+            className="min-h-11 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3"
+            placeholder="Photo credit / site name"
+            value={values.evidenceAttribution}
+            onChange={(e) => patch({ evidenceAttribution: e.target.value })}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          License
+          <input
+            className="min-h-11 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3"
+            placeholder="e.g. All rights reserved, CC BY 4.0"
+            value={values.evidenceLicense}
+            onChange={(e) => patch({ evidenceLicense: e.target.value })}
+          />
+        </label>
+        <textarea
+          className="min-h-16 rounded-xl border border-[var(--ink,#1c2421)]/15 bg-white px-3 py-2 text-sm"
+          placeholder="What this evidence shows…"
+          value={values.evidenceNote}
+          onChange={(e) => patch({ evidenceNote: e.target.value })}
         />
       </fieldset>
 

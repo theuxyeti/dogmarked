@@ -36,6 +36,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Leashed dogs on park paths; confirm beach zone rules before bringing Sugar and Munch.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.8,
@@ -72,6 +75,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Good dual-dog outing; keep both leashed on trails and near playgrounds.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.75,
@@ -109,6 +115,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Designated dog beach hours/rules apply. Works well for Sugar + Munch together.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.85,
@@ -145,6 +154,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Separate small/large areas — useful if Sugar and Munch prefer different play styles.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.8,
@@ -182,6 +194,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Patio dogs typically OK. Confirm capacity for two dogs (Sugar + Munch) at peak times.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.7,
@@ -219,6 +234,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Ask first: patio dog policy often max_dogs=1. Bring Sugar or Munch alone unless staff approves both.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.65,
@@ -256,6 +274,9 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Pet fee; confirm combined weight for Sugar + Munch and advance approval before booking.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.75,
@@ -292,27 +313,49 @@ export const SOUTH_FLORIDA_PLACES: PlaceWithPolicy[] = [
       feeCurrency: "USD",
       exceptionText:
         "Leashed dogs on public lawn areas; event days may restrict access.",
+      seasonalNotes: null,
+      seasonalStartMonth: null,
+      seasonalEndMonth: null,
       sourceType: "curated",
       sourceUrl: null,
       confidence: 0.7,
       lastVerifiedAt: "2026-06-01T00:00:00.000Z",
     },
   },
+  // Neutral contextual place — cafe present, no Dogmarked policy yet.
+  {
+    id: "a1000000-0000-4000-8000-000000000009",
+    name: "Hale Pâtisserie",
+    slug: "hale-patisserie-coral-gables",
+    category: "cafe",
+    lat: 25.7497,
+    lng: -80.2589,
+    countryCode: "US",
+    address: "2301 Galiano St",
+    city: "Coral Gables",
+    region: "FL",
+    website: null,
+    status: "active",
+    sourceType: "curated",
+    sourceAttribution: "Dogmarked curated seed (identity only — no policy)",
+    policy: null,
+  },
 ];
 
+/** ~2.3 kg / 5 lb each, small, travel in carrier — pack vs max_dogs=1 → Ask first */
 export const DEFAULT_DOG_PROFILES = [
   {
     id: "local-sugar",
     name: "Sugar",
-    weightKg: 8.2,
+    weightKg: 2.3,
     sizeClass: "small" as const,
     travelsInCarrier: true,
   },
   {
     id: "local-munch",
     name: "Munch",
-    weightKg: 22.5,
-    sizeClass: "medium" as const,
-    travelsInCarrier: false,
+    weightKg: 2.3,
+    sizeClass: "small" as const,
+    travelsInCarrier: true,
   },
 ];
