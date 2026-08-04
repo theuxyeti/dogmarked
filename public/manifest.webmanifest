@@ -1,0 +1,27 @@
+{
+  "name": "Dogmarked",
+  "short_name": "Dogmarked",
+  "description": "Build your own map of dog-friendly places, discover places shared by others, and understand the actual rules before you arrive.",
+  "start_url": "/explore",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f4ef",
+  "theme_color": "#0f5c56",
+  "lang": "en",
+  "categories": ["travel", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
