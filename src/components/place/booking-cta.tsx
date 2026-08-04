@@ -2,6 +2,7 @@
 
 import {
   AFFILIATE_DISCLOSURE,
+  affiliateClickPath,
   type AffiliateLink,
   withAffiliateDisclosure,
 } from "@/lib/affiliates";
@@ -35,7 +36,7 @@ export function BookingCta({ link, placeName, className }: BookingCtaProps) {
       </p>
       {enabled && link ? (
         <a
-          href={link.url}
+          href={affiliateClickPath(link.id)}
           target="_blank"
           rel="noopener noreferrer sponsored"
           className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full bg-[var(--teal,#0f5c56)] px-5 text-sm font-medium text-white"

@@ -1,3 +1,4 @@
+-- Migration 002 — RLS + promote RPC
 -- Phase 1 RLS policies + moderator helper + promote_policy_contribution RPC
 
 -- ---------------------------------------------------------------------------

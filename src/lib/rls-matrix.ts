@@ -93,6 +93,45 @@ export function canReadPolicyContribution(args: {
   );
 }
 
+/** Contributors may insert own drafts / in_review only — never published. */
+export function canInsertPolicyContribution(args: {
+  role: ClientRole;
+  ownerId: string;
+  viewerId: string | null;
+  moderationStatus: ModerationStatus;
+}): boolean {
+  if (args.role === "service_role") return true;
+  if (args.role !== "authenticated" || args.viewerId == null) return false;
+  if (args.ownerId !== args.viewerId) return false;
+  return (
+    args.moderationStatus === "draft" || args.moderationStatus === "in_review"
+  );
+}
+
+/** Owners edit own drafts; moderators edit any; clients never write published via update. */
+export function canUpdatePolicyContribution(args: {
+  role: ClientRole;
+  ownerId: string;
+  viewerId: string | null;
+  currentStatus: ModerationStatus;
+  nextStatus: ModerationStatus;
+  isModerator: boolean;
+}): boolean {
+  if (args.role === "service_role") return true;
+  if (args.isModerator) return true;
+  if (args.role !== "authenticated" || args.viewerId == null) return false;
+  if (args.ownerId !== args.viewerId) return false;
+  if (
+    args.currentStatus !== "draft" &&
+    args.currentStatus !== "in_review"
+  ) {
+    return false;
+  }
+  return (
+    args.nextStatus === "draft" || args.nextStatus === "in_review"
+  );
+}
+
 export function canAccessAuditEvents(role: ClientRole): boolean {
   return role === "service_role";
 }
@@ -154,6 +193,30 @@ export const RLS_PERMISSION_MATRIX: MatrixCell[] = [
     authenticated: false,
     service_role: false,
     notes: "service_role key is server-only",
+  },
+  {
+    resource: "policy_contributions",
+    action: "insert_own_draft",
+    anon: false,
+    authenticated: true,
+    service_role: true,
+    notes: "Own drafts / in_review only; promote via RPC",
+  },
+  {
+    resource: "dog_policy_versions",
+    action: "insert_update_delete",
+    anon: false,
+    authenticated: false,
+    service_role: true,
+    notes: "Append-only via promote RPC",
+  },
+  {
+    resource: "external_place_refs",
+    action: "insert_update_delete",
+    anon: false,
+    authenticated: false,
+    service_role: true,
+    notes: "Server writes only; clients select",
   },
 ];
 

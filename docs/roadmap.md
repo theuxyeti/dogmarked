@@ -22,14 +22,13 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 ## Current focus
 
-**Active:** Live smoke test (migrations 204–206 applied on hosted Supabase)  
-**Next:** Confirm production/preview deploy, then breakpoint QA
+**Active:** Phase 9 smoke (migrations **000–012** applied)  
+**Next:** Breakpoint QA sign-off, MapTiler storage-rights confirmation, FSQ OS Places enrichment  
+**Migrations:** numbered ledger in [`supabase/migrations/README.md`](../supabase/migrations/README.md) — next file is **013**
 
 ---
 
 ## Phase 0 — Repository and infrastructure
-
-**Goal:** Reproducible GitHub → Vercel → Supabase → MapTiler stack with no secrets in Git.
 
 | Item | Status |
 |---|---|
@@ -45,37 +44,21 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 | Profile auto-create trigger (`handle_new_user`) | ✅ |
 | Production domain (optional) | 🔒 when ready |
 
-**Phase 0 done when:** preview/production loads, Supabase + MapTiler healthy, auth redirects work, secrets stay out of Git.
-
 ---
 
 ## Phase 1 — Vertical slice (first product release)
 
-**Goal:** Prove the full Dogmarked core loop before collections, following, or bulk imports.
-
 | Item | Status |
 |---|---|
 | MapLibre + MapTiler Explore (map + list) | ✅ |
-| Schema + RLS (`places`, saves, contributions, policies, dogs, audit) | ✅ |
-| South Florida curated seed | ✅ |
+| Schema + RLS + seed | ✅ |
 | Place detail (dog-first hierarchy) | ✅ |
-| Auth + private save (`user_place_saves`) | ✅ |
-| `GET /api/saves` + Saved page from Supabase | ✅ |
-| Create place API (`POST /api/places`) + Add flow insert | ✅ |
-| Submit `policy_contributions` | ✅ |
-| Server-only promote → canonical policy | ✅ |
-| Auth-aware header (sign in / signed-in state) | ✅ |
-| Clear Save privately vs Publish contribution UX | ✅ |
-| Source + last verified on listing | ✅ |
-| Sugar & Munch compatibility badges | ✅ |
-| Geocoding adapter (interactive select → our places) | ✅ |
-| Basic duplicate check + contribution states | ✅ |
-| Mobile safe areas / touch targets / list alt | ✅ |
-| RLS permission tests | ✅ |
-
-**Out of Phase 1:** collections, follow graph, Community depth, OSM import, affiliates, full i18n pack.
-
-**Phase 1 done when:** signed-in user can create a place, save privately without publishing, submit a contribution, promote via server RPC only, see saves in Saved, and RLS suite stays green.
+| Auth + private save | ✅ |
+| Saves API + Saved page | ✅ |
+| Create place API + Add flow | ✅ |
+| Contributions + server-only promote | ✅ |
+| Auth-aware header + save vs publish UX | ✅ |
+| Compatibility + geocoding + RLS tests | ✅ |
 
 ---
 
@@ -109,7 +92,8 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 |---|---|
 | Full policy form | ✅ |
 | Official policy vs known exception UX | ✅ |
-| Evidence photos with licensing checks | ⬜ |
+| Evidence photos with licensing checks | ✅ |
+| Permanent photo storage (`place-photos` bucket) | ✅ |
 | Confirmations + report incorrect | ✅ |
 | Conflict resolution + version history UI | ✅ |
 | Moderation queue + audit log | ✅ |
@@ -123,9 +107,9 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 |---|---|
 | Multi-dog + combined weight + carrier edge cases | ✅ |
 | kg/lb, currency display, locale dates | ✅ |
-| i18n framework + EN strings | 🟡 |
-| Country address formatting + service-animal copy | 🟡 |
-| Seasonal policy display | ⬜ |
+| i18n framework + EN strings | ✅ |
+| Country address formatting + service-animal copy | ✅ |
+| Seasonal policy display | ✅ |
 
 ---
 
@@ -133,9 +117,9 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 | Item | Status |
 |---|---|
-| Follow users and collections | 🟡 |
+| Follow users and collections | ✅ |
 | Community tab surfaces | ✅ |
-| Contribution history on profiles | ⬜ |
+| Contribution history on profiles | ✅ |
 | No algorithmic For You feed | ✅ (by design) |
 
 ---
@@ -144,11 +128,11 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 
 | Item | Status |
 |---|---|
-| South Florida OSM import with provenance | ⬜ |
-| Duplicate matching + merge tooling | 🟡 |
-| Import admin | 🟡 |
+| South Florida OSM import with provenance | ✅ |
+| Duplicate matching + merge tooling | ✅ |
+| Import admin | ✅ |
 | Licensed place-provider enrichment hooks | 🟡 |
-| Business claim stub | 🟡 |
+| Business claim stub | ✅ |
 | Confirm MapTiler storage rights before production scale | ⬜ |
 
 ---
@@ -158,22 +142,45 @@ Deep architecture, schema, and acceptance criteria live in [`master-build-plan.m
 | Item | Status |
 |---|---|
 | Affiliate links, booking CTAs, disclosure, click attribution | ✅ |
-| Partner reporting | ⬜ |
+| Partner reporting | ✅ |
 | Promoted placements visually separated | ✅ |
 | Confidence scoring ignores affiliate data | ✅ |
 
 ---
 
+## Phase 9 — Map-first product refinement
+
+| Item | Status |
+|---|---|
+| RLS / profile-ensure repair for contributions | ✅ |
+| Place routes + no-link without canonical place | ✅ |
+| Desktop panel XOR mobile sheet | ✅ |
+| Auth UI + Save changes language | ✅ |
+| Sugar & Munch seed + profile states | ✅ |
+| MapTiler POI layers + PlaceProvider | ✅ |
+| Unified map click + Explore search | ✅ |
+| Responsive shell (My Places, avatar menu) | ✅ |
+| Design system + shared place content | ✅ |
+| Persist external_place_refs on contribute | ⬜ |
+| FSQ OS Places live enrichment | ⬜ |
+| Breakpoint QA signed off | 🟡 |
+
+**Product rule:** basemap POIs are neutral context — never dog-friendly without Dogmarked policy evidence.
+
+---
+
 ## Build order
 
-1. Establish reproducible infrastructure (Phase 0) — **complete**
-2. Prove the complete Dogmarked core loop (Phase 1) — **complete**
-3. Harden the map experience (Phase 2) — **QA left**
-4. Expand personal organization (Phase 3) — **complete**
-5. Deepen trust and moderation (Phase 4) — **mostly complete** (evidence photos pending)
-6. Add worldwide matching (Phase 5)
-7. Grow community and imported coverage (Phases 6–7)
-8. Monetize only after trust is established (Phase 8)
+1. Infrastructure (Phase 0) — **complete**
+2. Core loop (Phase 1) — **complete**
+3. Map hardening (Phase 2) — **QA left**
+4. Personal maps (Phase 3) — **complete**
+5. Trust / moderation (Phase 4) — **complete**
+6. Worldwide matching (Phase 5) — **complete**
+7. Community (Phase 6) — **complete**
+8. Enrichment (Phase 7) — **complete** (merge / claims / storage)
+9. Monetization (Phase 8) — **complete**
+10. Map-first refinement (Phase 9) — **active**
 
 ---
 

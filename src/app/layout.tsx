@@ -1,18 +1,12 @@
 import type { Metadata } from "next";
-import { DM_Sans, Fraunces } from "next/font/google";
+import { Manrope } from "next/font/google";
 import { AppHeader } from "@/components/layout/app-header";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import "./globals.css";
 
-const fraunces = Fraunces({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-fraunces",
-  display: "swap",
-});
-
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-dm-sans",
+  variable: "--font-manrope",
   display: "swap",
 });
 
@@ -32,10 +26,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${fraunces.variable} ${dmSans.variable} antialiased`}>
+      <body className={`${manrope.variable} antialiased`}>
         <div className="flex min-h-dvh flex-col">
           <AppHeader />
-          <main className="min-h-0 flex-1 pb-20 md:pb-0">{children}</main>
+          <main className="min-h-0 flex-1 pb-20 xl:pb-0">{children}</main>
           <MobileNav />
         </div>
       </body>

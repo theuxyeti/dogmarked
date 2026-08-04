@@ -1,31 +1,52 @@
 @import "tailwindcss";
 
 :root {
-  /* Coastal daylight */
-  --teal: #0f6b6b;
-  --teal-deep: #0a4f4f;
-  --sand: #e8dcc8;
-  --ink: #1c2421;
-  --paper: #f7f3ec;
-  --foam: #f0f7f6;
-  --muted: #5c6b66;
-  --border: color-mix(in oklab, var(--ink) 12%, transparent);
-  --danger: #9b3a2f;
-  --ask: #b7791f;
-  --good: #1f7a4d;
+  /* Dogmarked design tokens — trustworthy coastal travel */
+  --dm-teal: #0f6b6b;
+  --dm-teal-deep: #0a4f4f;
+  --dm-teal-soft: #1a8a8a;
+  --dm-sand: #e8dcc8;
+  --dm-ink: #1c2421;
+  --dm-paper: #f7f3ec;
+  --dm-foam: #f0f7f6;
+  --dm-muted: #5c6b66;
+  --dm-border: color-mix(in oklab, var(--dm-ink) 12%, transparent);
+  --dm-danger: #9b3a2f;
+  --dm-ask: #b7791f;
+  --dm-good: #1f7a4d;
+  --dm-unknown: #64716d;
+  --dm-neutral-poi: #6b7c78;
+  --dm-policy-pin: #0f6b6b;
+  --dm-radius: 0.75rem;
+  --dm-header-h: 64px;
+  --dm-panel-left: 380px;
+  --dm-panel-right: 420px;
 
-  --background: var(--paper);
-  --foreground: var(--ink);
+  /* Aliases used by existing components */
+  --teal: var(--dm-teal);
+  --teal-deep: var(--dm-teal-deep);
+  --sand: var(--dm-sand);
+  --ink: var(--dm-ink);
+  --paper: var(--dm-paper);
+  --foam: var(--dm-foam);
+  --muted: var(--dm-muted);
+  --border: var(--dm-border);
+  --danger: var(--dm-danger);
+  --ask: var(--dm-ask);
+  --good: var(--dm-good);
+
+  --background: var(--dm-paper);
+  --foreground: var(--dm-ink);
   --card: #fffdf8;
-  --primary: var(--teal);
+  --primary: var(--dm-teal);
   --primary-foreground: #f7fffe;
-  --secondary: var(--sand);
-  --secondary-foreground: var(--ink);
-  --accent: color-mix(in oklab, var(--teal) 12%, var(--paper));
-  --radius: 0.75rem;
+  --secondary: var(--dm-sand);
+  --secondary-foreground: var(--dm-ink);
+  --accent: color-mix(in oklab, var(--dm-teal) 12%, var(--dm-paper));
+  --radius: var(--dm-radius);
 
-  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
-  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
 }
 
 @theme inline {
@@ -64,12 +85,12 @@ body {
 
 body {
   margin: 0;
-  color: var(--ink);
+  color: var(--dm-ink);
   font-family: var(--font-sans);
   background:
-    radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--teal) 14%, transparent), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, var(--sand) 70%, transparent), transparent 50%),
-    linear-gradient(180deg, var(--foam), var(--paper) 40%, var(--sand));
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--dm-teal) 14%, transparent), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, var(--dm-sand) 70%, transparent), transparent 50%),
+    linear-gradient(180deg, var(--dm-foam), var(--dm-paper) 40%, var(--dm-sand));
   background-attachment: fixed;
 }
 
@@ -78,7 +99,7 @@ h2,
 h3,
 .font-display {
   font-family: var(--font-display);
-  font-weight: 550;
+  font-weight: 650;
   letter-spacing: -0.02em;
 }
 
@@ -110,7 +131,55 @@ a {
 
 .maplibregl-popup-content {
   font-family: var(--font-sans);
-  border-radius: 0.75rem;
+  border-radius: var(--dm-radius);
   padding: 0.5rem 0.75rem;
-  box-shadow: 0 8px 24px color-mix(in oklab, var(--ink) 12%, transparent);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--dm-ink) 12%, transparent);
+}
+
+/* Quiet contextual POI markers (layer B) — never status-colored */
+.dm-poi-marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--dm-neutral-poi);
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--dm-ink) 20%, transparent);
+  cursor: pointer;
+}
+
+.dm-policy-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px color-mix(in oklab, var(--dm-ink) 25%, transparent);
+  cursor: pointer;
+  background: var(--dm-policy-pin);
+}
+
+.dm-policy-marker[data-status="ask_first"] {
+  background: var(--dm-ask);
+}
+
+.dm-policy-marker[data-status="no_dogs"],
+.dm-policy-marker[data-status="service_animals_only"] {
+  background: var(--dm-danger);
+}
+
+.dm-policy-marker[data-status="dogs_welcome"],
+.dm-policy-marker[data-status="dogs_ok_outdoors"],
+.dm-policy-marker[data-status="dogs_ok_with_restrictions"] {
+  background: var(--dm-good);
+}
+
+.dm-policy-marker--unverified {
+  background: var(--dm-unknown, #64716d);
+  width: 12px;
+  height: 12px;
+  border-style: dashed;
+}
+
+.dm-policy-marker[data-selected="true"] {
+  outline: 2px solid var(--dm-teal-deep);
+  outline-offset: 2px;
 }

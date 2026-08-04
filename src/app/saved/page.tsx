@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { SavedLibrary, type SavedLibraryItem } from "@/components/saved/saved-library";
 import { isSupabaseConfigured } from "@/lib/utils";
 
-export const metadata = { title: "Saved" };
+export const metadata = { title: "My Places" };
 
 async function loadSaves(): Promise<{
   items: SavedLibraryItem[];
@@ -76,9 +76,13 @@ export default async function SavedPage() {
 
   return (
     <div>
-      <SavedLibrary title="Your personal map" items={items} />
+      <SavedLibrary title="My Places" items={items} />
       <div className="mx-auto flex max-w-2xl flex-col gap-3 px-4 pb-28">
-        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-danger">
+            Could not load your places. Sign in again or try later.
+          </p>
+        ) : null}
         {!signedIn ? (
           <p className="text-sm text-muted">
             Sign in to load your private saves. Saving never publishes a dog policy.

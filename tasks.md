@@ -1,28 +1,26 @@
 <tldr>
-Phases 1–4 wired; hosted migrations `204`–`206` applied. Next: deploy branch if not live, then smoke-test the signed-in loop.
+**Why production looks unchanged:** Phase 3–9 UI is mostly **uncommitted / not deployed**. Migrations 000–013 are on Supabase, but `dogmarked.vercel.app` still serves older app code (header still says “Saved”).
 </tldr>
 
-## Needs you
+## Blocker — deploy
 
-- [x] Apply on Supabase SQL Editor:
-  - `20260304120400_places_location_sync.sql`
-  - `20260304120500_public_profile_saves.sql`
-  - `20260304120600_policy_reports.sql`
-- [ ] Live smoke: sign in → create place → save (visibility) → collection → publish → report
+- [ ] Commit + push feature branch (or merge to the branch Vercel uses) so preview/production picks up Phase 9
+- [ ] Confirm Hale: `/place/hale-patisserie-coral-gables` after deploy
 
-## Active (code)
+## Applied
 
-- [ ] Breakpoint QA (Phase 2)
-- [ ] Evidence photo uploads with licensing (Phase 4)
-- [ ] Follow graph persistence (Phase 6)
-- [ ] OSM import job (Phase 7)
+- [x] Migrations **000–013** on hosted Supabase
 
-## Done recently
+## Smoke after deploy
 
-- [x] Collections API + create/detail/share visibility
-- [x] Public `/u/[handle]` + public saves RPC
-- [x] Save visibility private/link/public
-- [x] Report incorrect + mark closed
-- [x] Moderation queue loads live contributions/reports
-- [x] Policy form on Add + policy history on place page
-- [x] Community tab from Supabase (public collections / verified / needs check)
+- [ ] Header shows **My Places** (not Saved); avatar menu when signed in
+- [ ] Explore: basemap POI click → What’s here?; Dogmarked pins colored by policy
+- [ ] Hale page: “not marked dog-friendly until evidence”
+- [ ] Contribution submit without raw RLS error
+
+## Local fixes this pass
+
+- Mobile/tablet brand bar (was missing below `xl`)
+- Unverified markers styled distinctly
+- Hale slug + migration 013
+- Clearer empty-policy place copy

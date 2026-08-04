@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { PlaceLink } from "@/components/place/place-link";
 import type { Collection } from "@/lib/collections";
 import type { CommunityPlaceChip } from "@/lib/places/community";
 
@@ -94,9 +95,10 @@ function PlaceList({
     <ul className="flex flex-col gap-2">
       {items.map((p) => (
         <li key={p.slug}>
-          <Link
-            href={`/place/${p.slug}`}
+          <PlaceLink
+            slug={p.slug}
             className="flex min-h-11 items-center justify-between rounded-xl px-2 py-2 hover:bg-sand/35"
+            disabledClassName="flex min-h-11 items-center justify-between rounded-xl px-2 py-2 text-muted"
           >
             <span>
               <span className="font-medium text-ink">{p.name}</span>
@@ -109,7 +111,7 @@ function PlaceList({
                 →
               </span>
             )}
-          </Link>
+          </PlaceLink>
         </li>
       ))}
     </ul>

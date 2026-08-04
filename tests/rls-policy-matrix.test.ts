@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   canAccessAuditEvents,
+  canInsertPolicyContribution,
+  canReadPolicyContribution,
   canReadUserPlaceSave,
   canSelectDogPolicies,
+  canUpdatePolicyContribution,
   canWriteDogPolicies,
   isServiceRoleServerOnly,
   listingExcludesPrivateNotes,
@@ -107,5 +110,86 @@ describe("RLS permission matrix (Phase 1 intent)", () => {
     expect(canAccessAuditEvents("anon")).toBe(false);
     expect(canAccessAuditEvents("authenticated")).toBe(false);
     expect(canAccessAuditEvents("service_role")).toBe(true);
+  });
+
+  it("authenticated contributors insert own drafts; anon cannot", () => {
+    expect(
+      canInsertPolicyContribution({
+        role: "anon",
+        ownerId: "u1",
+        viewerId: null,
+        moderationStatus: "draft",
+      }),
+    ).toBe(false);
+    expect(
+      canInsertPolicyContribution({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        moderationStatus: "draft",
+      }),
+    ).toBe(true);
+    expect(
+      canInsertPolicyContribution({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        moderationStatus: "published",
+      }),
+    ).toBe(false);
+  });
+
+  it("owners update drafts; cannot self-publish via client update", () => {
+    expect(
+      canUpdatePolicyContribution({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        currentStatus: "draft",
+        nextStatus: "in_review",
+        isModerator: false,
+      }),
+    ).toBe(true);
+    expect(
+      canUpdatePolicyContribution({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        currentStatus: "draft",
+        nextStatus: "published",
+        isModerator: false,
+      }),
+    ).toBe(false);
+    expect(
+      canUpdatePolicyContribution({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        currentStatus: "draft",
+        nextStatus: "published",
+        isModerator: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("moderator can read drafts; other users cannot", () => {
+    expect(
+      canReadPolicyContribution({
+        role: "authenticated",
+        moderationStatus: "draft",
+        ownerId: "u1",
+        viewerId: "u2",
+        isModerator: false,
+      }),
+    ).toBe(false);
+    expect(
+      canReadPolicyContribution({
+        role: "authenticated",
+        moderationStatus: "draft",
+        ownerId: "u1",
+        viewerId: "u2",
+        isModerator: true,
+      }),
+    ).toBe(true);
   });
 });

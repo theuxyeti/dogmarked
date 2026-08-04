@@ -210,6 +210,22 @@ export default async function ModeratePage() {
         <Link href="/explore" className="text-teal-deep underline">
           Back to Explore
         </Link>
+        {" · "}
+        <Link href="/admin/imports" className="text-teal-deep underline">
+          Imports
+        </Link>
+        {" · "}
+        <Link href="/admin/merges" className="text-teal-deep underline">
+          Merges
+        </Link>
+        {" · "}
+        <Link href="/admin/claims" className="text-teal-deep underline">
+          Claims
+        </Link>
+        {" · "}
+        <Link href="/admin/partners" className="text-teal-deep underline">
+          Partners
+        </Link>
       </p>
     </main>
   );

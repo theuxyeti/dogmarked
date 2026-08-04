@@ -1,3 +1,4 @@
+-- Migration 005 — public profile saves RPCs
 -- Phase 3: expose public saves for profiles without leaking private_notes.
 -- Clients must use this RPC (or owner RLS) — no broad anon select on user_place_saves.
 

@@ -3,13 +3,38 @@
 import { useState } from "react";
 import Link from "next/link";
 import { BookingCta } from "@/components/place/booking-cta";
+import { ClaimBusiness } from "@/components/place/claim-business";
 import { CompatibilityBadge } from "@/components/place/compatibility-badge";
 import { Button } from "@/components/ui/button";
 import type { AffiliateLink } from "@/lib/affiliates";
+import { formatAddress, serviceAnimalTerm } from "@/lib/address";
 import { computeCompatibility } from "@/lib/compatibility";
+import { t } from "@/lib/i18n";
+import { publicApiError } from "@/lib/api-errors";
 import { DEFAULT_DOG_PROFILES } from "@/lib/places/fixtures";
 import { formatCurrency, formatWeight } from "@/lib/units";
 import type { DogProfile, PlaceWithPolicy, SaveStatus, SaveVisibility } from "@/lib/types";
+
+function friendlyClientError(raw: string | undefined, fallback: string) {
+  if (!raw) return fallback;
+  return publicApiError({ message: raw }, fallback);
+}
+
+const MONTH_LABELS = [
+  "",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function dogStatusLabel(status: string | undefined) {
   switch (status) {
@@ -28,6 +53,13 @@ function dogStatusLabel(status: string | undefined) {
     default:
       return "Dog policy unknown";
   }
+}
+
+function seasonalLabel(start: number | null | undefined, end: number | null | undefined) {
+  if (!start && !end) return null;
+  const a = start ? MONTH_LABELS[start] : "?";
+  const b = end ? MONTH_LABELS[end] : "?";
+  return `${a}–${b}`;
 }
 
 function formatVerified(iso: string | null | undefined) {
@@ -77,7 +109,7 @@ export function PlaceDetail({
       });
       const data = (await res.json()) as { error?: string; ok?: boolean; message?: string };
       if (!res.ok) {
-        setMessage(data.error ?? data.message ?? "Could not save place.");
+        setMessage(friendlyClientError(data.error ?? data.message, "Could not save place."));
       } else {
         const visNote =
           saveVisibility === "private"
@@ -124,7 +156,9 @@ export function PlaceDetail({
       });
       const data = (await res.json()) as { error?: string; message?: string; ok?: boolean };
       if (!res.ok) {
-        setMessage(data.error ?? data.message ?? "Contribution failed.");
+        setMessage(
+          friendlyClientError(data.error ?? data.message, "Could not save contribution."),
+        );
       } else {
         setMessage(data.message ?? "Contribution submitted.");
       }
@@ -209,6 +243,13 @@ export function PlaceDetail({
         <p className="text-base font-medium text-teal-deep">
           {dogStatusLabel(policy?.dogStatus)}
         </p>
+        {!policy ? (
+          <p className="rounded-lg bg-foam px-3 py-2 text-sm text-muted">
+            This place is listed for location context only. It is{" "}
+            <strong className="font-medium text-ink">not marked dog-friendly</strong>{" "}
+            until Dogmarked has policy evidence.
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <CompatibilityBadge verdict={compat.verdict} />
           <span className="text-xs text-muted">for Sugar & Munch</span>
@@ -221,9 +262,22 @@ export function PlaceDetail({
       </header>
 
       <section className="space-y-2 border-t border-border pt-3">
-        <h3 className="text-sm font-medium text-ink">Restrictions</h3>
-        <ul className="grid gap-1 text-sm text-muted">
-          <li>Max dogs: {policy?.maxDogs ?? "—"}</li>
+        <h3 className="text-sm font-medium text-ink">
+          {policy ? "Restrictions" : "Dog policy"}
+        </h3>
+        {!policy ? (
+          <p className="text-sm text-muted">
+            No structured dog rules yet. Save privately if you want, then add a
+            contribution when you know the policy — this listing alone is not a
+            dog-friendly claim.
+          </p>
+        ) : null}
+        <ul className={policy ? "grid gap-1 text-sm text-muted" : "hidden"}>
+          <li>
+            {policy?.maxDogs != null
+              ? `Max dogs: ${policy.maxDogs}`
+              : "Dog limit not verified"}
+          </li>
           <li>
             Weight:{" "}
             {policy?.maxWeightKg != null
@@ -267,8 +321,24 @@ export function PlaceDetail({
 
       {policy?.exceptionText ? (
         <section className="rounded-xl bg-sand/50 px-3 py-3">
-          <h3 className="text-sm font-medium text-ink">Exception</h3>
+          <h3 className="text-sm font-medium text-ink">{t("policy.exception")}</h3>
           <p className="mt-1 text-sm text-muted">{policy.exceptionText}</p>
+        </section>
+      ) : null}
+
+      {policy?.seasonalNotes ||
+      policy?.seasonalStartMonth ||
+      policy?.seasonalEndMonth ? (
+        <section className="rounded-xl border border-border px-3 py-3">
+          <h3 className="text-sm font-medium text-ink">Seasonal</h3>
+          {seasonalLabel(policy.seasonalStartMonth, policy.seasonalEndMonth) ? (
+            <p className="mt-1 text-sm text-muted">
+              Season window: {seasonalLabel(policy.seasonalStartMonth, policy.seasonalEndMonth)}
+            </p>
+          ) : null}
+          {policy.seasonalNotes ? (
+            <p className="mt-1 text-sm text-muted">{policy.seasonalNotes}</p>
+          ) : null}
         </section>
       ) : null}
 
@@ -278,17 +348,29 @@ export function PlaceDetail({
           {formatVerified(policy?.lastVerifiedAt)}
         </p>
         <p>
-          <span className="text-ink">Source:</span>{" "}
+          <span className="text-ink">{t("policy.source")}:</span>{" "}
           {policy?.sourceType ?? place.sourceType ?? "unverified"}
           {policy?.confidence != null
             ? ` · confidence ${Math.round(policy.confidence * 100)}%`
             : ""}
         </p>
-        {place.address ? (
+        {policy?.dogStatus === "service_animals_only" ? (
           <p>
-            {[place.address, place.city, place.region].filter(Boolean).join(", ")}
+            Terminology here: {serviceAnimalTerm(place.countryCode)} (
+            {place.countryCode})
           </p>
         ) : null}
+        <p>
+          {formatAddress(
+            {
+              line1: place.address,
+              city: place.city,
+              region: place.region,
+              countryCode: place.countryCode,
+            },
+            { singleLine: true },
+          )}
+        </p>
       </section>
 
       <section className="space-y-3 border-t border-border pt-3">
@@ -358,6 +440,7 @@ export function PlaceDetail({
         </div>
       </section>
       <BookingCta link={affiliateLink} placeName={place.name} />
+      <ClaimBusiness placeId={place.id} />
       {message ? <p className="text-sm text-muted">{message}</p> : null}
     </article>
   );

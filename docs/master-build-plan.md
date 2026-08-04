@@ -216,7 +216,7 @@ Business / official / multi-community / single / OSM / unverified / stale. **Aff
 
 - Worldwide-ready schema from the start (FR, SE, CH, IT, US+); content may start in South Florida.
 - Moderation/duplicates from first publish path: proximity+name dedupe, contribution states, reports, conflict → new version via server promote, closed places, `audit_events`.
-- Mobile nav: Explore · Saved · Add · Community · Profile. Desktop: left results + map + right detail.
+- Mobile nav: Explore · My Places · Add · Community · Profile. Desktop ≥1280: left results + map + right detail (sheet below).
 - URL state for explore/place/collections. Dog-first place detail hierarchy.
 - Mobile-web: PWA readiness, safe areas, 44px targets, sheet+keyboard, geolocation states, list as accessible map alternative, breakpoints 375 / 768 / 1024 / 1280 / 1440.
 - Design: coastal daylight, Dogmarked brand on first viewport, map as hero, calm chrome (not Mapstr-crowded).
@@ -299,11 +299,12 @@ Validate the full core loop before collections, following, or bulk imports. Phas
 
 - [x] Full policy form
 - [x] Official policy vs known exception UX
-- [ ] Evidence photos with licensing checks
-- [ ] Confirmations + report incorrect
+- [x] Evidence photos with licensing checks *(link-only + permanent upload via `/api/evidence/upload`)*
+- [x] Confirmations + report incorrect
 - [x] Conflict resolution + version history UI (server-side promote only)
 - [x] Moderation queue + audit log
-- [ ] Closed-place handling
+- [x] Closed-place handling
+- [x] Permanent photo storage bucket *(migration 010 `place-photos` applied)*
 
 ### Phase 5 — Matching and worldwide UX
 
@@ -311,30 +312,60 @@ Validate the full core loop before collections, following, or bulk imports. Phas
 - [x] kg/lb, currency display, locale dates
 - [x] i18n framework + EN strings extracted
 - [x] Country address formatting + service-animal copy variants
-- [ ] Seasonal policy display
+- [x] Seasonal policy display
 
 ### Phase 6 — Community discovery
 
 - [x] Follow users and collections
 - [x] Community tab surfaces
-- [ ] Contribution history on profiles
+- [x] Contribution history on profiles
 - [x] No algorithmic For You feed
 
 ### Phase 7 — Data enrichment
 
-- [ ] South Florida OSM import with imported provenance
-- [x] Scale duplicate matching + merge tooling *(mapper + admin stub; live Overpass job pending)*
+- [x] South Florida OSM import with imported provenance
+- [x] Scale duplicate matching + merge tooling *(`/admin/merges` + migration 009 applied)*
 - [x] Import admin
 - [x] Licensed place-provider enrichment hooks *(schema/types; provider attach pending)*
-- [x] Business claim stub
+- [x] Business claim stub *(`/admin/claims` + migration 011 applied)*
 - [ ] Confirm MapTiler (or successor) plan storage rights for any retained geocode fields before production scale
 
 ### Phase 8 — Monetization
 
-- [x] Affiliate links, booking CTAs, disclosure, click attribution *(CTA + lib; live partners pending)*
-- [ ] Partner reporting
+- [x] Affiliate links, booking CTAs, disclosure, click attribution *(hop via `/api/affiliates/click`)*
+- [x] Partner reporting *(`/admin/partners` + migration 008 applied)*
 - [x] Promoted placements visually separated
 - [x] Confidence scoring ignores affiliate data
+
+### Phase 9 — Map-first product refinement
+
+Make Explore feel like a polished, location-driven travel product (map primary). **Critical rule:** restaurants/hotels/etc. on the basemap are **neutral contextual places** — never dog-friendly until Dogmarked has policy evidence. Never infer friendliness from POI presence.
+
+#### Repair
+- [x] Fix `policy_contributions` insert path (profile ensure + RLS); drafts own-row only; no client writes to `dog_policies` / versions / audit *(migration 012 applied)*
+- [x] Helpful API/UI errors (no raw DB/RLS strings in UI)
+- [x] Place routes + disable links without canonical place *(Hale Pâtisserie seed + not-found)*
+- [x] Desktop detail panel XOR mobile bottom sheet *(≥1280 panel / &lt;1280 sheet)*
+- [x] Auth UI: no dual Sign in / Sign out; product language (“Save changes”)
+- [x] Sugar & Munch seed weights (~2.3 kg / 5 lb, small, carrier) + profile load/save states
+
+#### Map intelligence
+- [x] MapTiler streets + POI click via `queryRenderedFeatures`
+- [x] Layers A basemap · B neutral contextual POIs · C Dogmarked policy pins *(status colors; progressive label opacity)*
+- [x] `PlaceProvider` interface; MapTiler impl; Foursquare stub (FSQ OS Places next)
+- [x] `external_place_refs` (migration 012)
+- [x] Unified map click (“What’s here?”) + Explore search + “Search this area”
+
+#### Shell + design
+- [x] Desktop 64px header + UserAvatarMenu; Saved → My Places
+- [x] Mobile bottom nav + safe areas; breakpoint layouts (1280 / 768)
+- [x] Design tokens + Manrope + shared place content + showcase route *(`/design-system`)*
+
+**Deferred / polish:** tablet drawer chrome polish; persist `external_place_refs` on contribute; FSQ OS Places live key; breakpoint QA sign-off; MapTiler storage-rights confirmation.
+
+**Credentials needed:** apply migrations **009–012** on hosted Supabase; existing `NEXT_PUBLIC_MAPTILER_KEY` for POI search (optional `FOURSQUARE_API_KEY` later).
+
+**Phase 9 done when:** map feels populated via basemap POIs (not only seed pins); neutral ≠ dog friendly; desktop/mobile distinct nav & detail; RLS + place routes + auth + Sugar/Munch fixed; tokens used where UI is touched.
 
 ---
 

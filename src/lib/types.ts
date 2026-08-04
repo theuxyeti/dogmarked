@@ -62,6 +62,9 @@ export interface DogPolicy {
   feeAmount: number | null;
   feeCurrency: string | null;
   exceptionText: string | null;
+  seasonalNotes: string | null;
+  seasonalStartMonth: number | null;
+  seasonalEndMonth: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
   /** 0–1 numeric confidence from dog_policies.confidence */

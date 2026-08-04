@@ -1,3 +1,4 @@
+-- Migration 003 — collections, follows, affiliates
 -- Phase 8 (+3/6): collections, follows, affiliate_links + RLS
 -- Affiliates: public read of active links; writes admin only.
 -- Confidence scoring must ignore affiliate data (enforced in app + docs).

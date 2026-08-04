@@ -109,10 +109,21 @@ export function unfollowTarget(
   );
 }
 
-/** Stub: remote follow sync when Supabase `follows` table is available. */
+/** Load follows for the signed-in user via /api/follows (Supabase-backed). */
 export async function syncFollowsFromServer(
-  _followerId: string,
+  followerId: string,
 ): Promise<Follow[]> {
-  // TODO: supabase.from('follows').select('*').eq('follower_id', followerId)
-  return listFollows(_followerId);
+  try {
+    const res = await fetch("/api/follows");
+    if (!res.ok) return listFollows(followerId);
+    const data = (await res.json()) as { follows?: Follow[] };
+    const rows = data.follows ?? [];
+    if (typeof window !== "undefined") {
+      const others = readStore().filter((f) => f.followerId !== followerId);
+      writeStore([...others, ...rows]);
+    }
+    return rows;
+  } catch {
+    return listFollows(followerId);
+  }
 }

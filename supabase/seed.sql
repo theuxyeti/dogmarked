@@ -112,6 +112,20 @@ insert into public.places (
     null,
     null,
     'active', 'curated', 'Dogmarked curated seed'
+  ),
+  -- Identity-only cafe: present on the map, NOT dog-friendly until policy evidence exists
+  (
+    'a1000000-0000-4000-8000-000000000009',
+    'Hale Pâtisserie',
+    'hale-patisserie-coral-gables',
+    'cafe',
+    st_setsrid(st_makepoint(-80.2589, 25.7497), 4326)::geography,
+    25.7497, -80.2589, 'US',
+    '2301 Galiano St', 'Coral Gables', 'FL', '33134',
+    '{"line1":"2301 Galiano St","city":"Coral Gables","region":"FL","postal_code":"33134"}'::jsonb,
+    null,
+    null,
+    'active', 'curated', 'Dogmarked curated seed (identity only — no policy)'
   )
 on conflict (id) do nothing;
 

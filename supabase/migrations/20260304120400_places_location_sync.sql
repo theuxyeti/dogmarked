@@ -1,3 +1,4 @@
+-- Migration 004 — places location sync
 -- Keep PostGIS location in sync with lat/lng for user-created places.
 -- Clients may send EWKT or rely on this trigger when lat/lng are set.
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { logServerError, publicApiError } from "@/lib/api-errors";
 import { isSupabaseConfigured } from "@/lib/utils";
 
 const contributionSchema = z.object({
@@ -26,12 +27,19 @@ const contributionSchema = z.object({
   feeAmount: z.number().nullable().optional(),
   feeCurrency: z.string().optional().nullable(),
   exceptionText: z.string().max(2000).nullable().optional(),
+  seasonalNotes: z.string().max(2000).nullable().optional(),
+  seasonalStartMonth: z.number().int().min(1).max(12).nullable().optional(),
+  seasonalEndMonth: z.number().int().min(1).max(12).nullable().optional(),
   sourceType: z
     .enum(["firsthand", "official_website", "staff", "signage", "other"])
     .optional()
     .nullable(),
   sourceUrl: z.string().url().optional().nullable().or(z.literal("")),
   promote: z.boolean().optional(),
+  evidenceUrl: z.string().url().optional().nullable().or(z.literal("")),
+  evidenceNote: z.string().max(2000).optional().nullable(),
+  evidenceAttribution: z.string().max(500).optional().nullable(),
+  evidenceLicense: z.string().max(200).optional().nullable(),
 });
 
 export async function POST(request: Request) {
@@ -71,6 +79,30 @@ export async function POST(request: Request) {
     );
   }
 
+  // Ensure profiles row exists (migration 012 trigger + RPC). FK failures look like RLS.
+  const { error: profileError } = await supabase.rpc("ensure_own_profile");
+  if (profileError) {
+    // Fallback insert if RPC not applied yet
+    const { error: insertProfileError } = await supabase.from("profiles").upsert({
+      id: user.id,
+      handle: `user${user.id.replace(/-/g, "").slice(0, 12)}`,
+      display_name: user.email?.split("@")[0] ?? "user",
+      role: "user",
+    });
+    if (insertProfileError) {
+      logServerError("contributions.ensure_profile", insertProfileError);
+      return NextResponse.json(
+        {
+          error: publicApiError(
+            insertProfileError,
+            "Could not prepare your profile. Try signing out and back in.",
+          ),
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   const payload = parsed.data;
   // RLS only allows client insert as draft/in_review; promote RPC publishes.
   const moderationStatus = payload.promote ? "in_review" : "draft";
@@ -93,6 +125,9 @@ export async function POST(request: Request) {
       fee_amount: payload.feeAmount ?? null,
       fee_currency: payload.feeCurrency ?? "USD",
       exception_text: payload.exceptionText ?? null,
+      seasonal_notes: payload.seasonalNotes ?? null,
+      seasonal_start_month: payload.seasonalStartMonth ?? null,
+      seasonal_end_month: payload.seasonalEndMonth ?? null,
       source_type: payload.sourceType ?? "firsthand",
       source_url: payload.sourceUrl || null,
       moderation_status: moderationStatus,
@@ -102,10 +137,48 @@ export async function POST(request: Request) {
     .single();
 
   if (error || !contribution) {
+    logServerError("contributions.insert", error);
     return NextResponse.json(
-      { error: error?.message ?? "Failed to create contribution" },
+      {
+        error: publicApiError(
+          error,
+          "Could not save your contribution. Please try again.",
+        ),
+      },
       { status: 400 },
     );
+  }
+
+  if (payload.evidenceUrl || payload.evidenceNote) {
+    let photoId: string | null = null;
+    if (payload.evidenceUrl) {
+      const { data: photo } = await supabase
+        .from("place_photos")
+        .insert({
+          place_id: payload.placeId,
+          uploaded_by: user.id,
+          source_type: "user_upload",
+          source_url: payload.evidenceUrl,
+          attribution_text: payload.evidenceAttribution ?? null,
+          license: payload.evidenceLicense ?? null,
+          storage_permission: "link_only",
+          storage_path: null,
+          caption: payload.evidenceNote ?? null,
+          is_evidence: true,
+        })
+        .select("id")
+        .maybeSingle();
+      photoId = photo?.id ?? null;
+    }
+    await supabase.from("policy_evidence").insert({
+      place_id: payload.placeId,
+      contribution_id: contribution.id,
+      photo_id: photoId,
+      kind: payload.evidenceUrl ? "url" : "note",
+      url: payload.evidenceUrl || null,
+      note: payload.evidenceNote ?? null,
+      created_by: user.id,
+    });
   }
 
   let promoted = false;
@@ -117,6 +190,7 @@ export async function POST(request: Request) {
     });
 
     if (rpcError) {
+      logServerError("contributions.promote", rpcError);
       try {
         const { createAdminClient } = await import("@/lib/supabase/admin");
         const admin = createAdminClient();
@@ -124,12 +198,14 @@ export async function POST(request: Request) {
           contribution_id: contribution.id,
         });
         if (adminRpcError) {
-          promoteError = adminRpcError.message;
+          logServerError("contributions.promote_admin", adminRpcError);
+          promoteError = "saved_pending_review";
         } else {
           promoted = true;
         }
       } catch (err) {
-        promoteError = rpcError.message || String(err);
+        logServerError("contributions.promote_admin", err);
+        promoteError = "saved_pending_review";
       }
     } else {
       promoted = true;
@@ -143,7 +219,7 @@ export async function POST(request: Request) {
     message: promoted
       ? "Contribution submitted and promoted to canonical policy."
       : promoteError
-        ? `Contribution saved; promote skipped: ${promoteError}`
+        ? "Contribution saved for review. Canonical policy updates after moderation."
         : "Contribution saved as draft.",
   });
 }

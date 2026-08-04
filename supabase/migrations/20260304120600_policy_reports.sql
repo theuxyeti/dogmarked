@@ -1,3 +1,4 @@
+-- Migration 006 — policy reports
 -- Phase 4: user reports of incorrect policy / closed places.
 
 create table if not exists public.policy_reports (

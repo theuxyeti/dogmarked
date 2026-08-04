@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PolicyForm, type PolicyFormValues } from "@/components/policy/policy-form";
+import {
+  PolicyForm,
+  type PolicyFormExtras,
+  type PolicyFormValues,
+} from "@/components/policy/policy-form";
 import { useGeolocation } from "@/hooks/use-geolocation";
 
 type PlaceCategory = "park" | "restaurant" | "beach" | "hotel" | "cafe" | "other";
@@ -55,6 +59,24 @@ export default function AddPage() {
       })
       .catch(() => undefined);
   }, [presetSlug]);
+
+  useEffect(() => {
+    if (presetSlug) return;
+    const lat = Number(searchParams.get("lat"));
+    const lng = Number(searchParams.get("lng"));
+    const presetName = searchParams.get("name")?.trim();
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const label = presetName || "Custom place";
+    setName(label);
+    setSelected({
+      name: label,
+      lat,
+      lng,
+      formattedAddress: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+    });
+    setCoordLat(String(lat));
+    setCoordLng(String(lng));
+  }, [presetSlug, searchParams]);
 
   async function searchPlaces() {
     setMessage(null);
@@ -151,7 +173,7 @@ export default function AddPage() {
     return { id: createData.place.id, slug: createData.place.slug };
   }
 
-  async function onPolicySubmit(values: PolicyFormValues) {
+  async function onPolicySubmit(values: PolicyFormValues, extras: PolicyFormExtras) {
     setMessage(null);
     const place = await ensurePlace();
     if (!place) return;
@@ -194,17 +216,62 @@ export default function AddPage() {
         feeAmount: values.feeAmount,
         feeCurrency: values.feeCurrency,
         exceptionText: values.exceptionText || null,
+        seasonalNotes: values.seasonalNotes || null,
+        seasonalStartMonth: values.seasonalStartMonth,
+        seasonalEndMonth: values.seasonalEndMonth,
         sourceType: values.sourceType,
         sourceUrl: values.sourceUrl || null,
+        evidenceUrl: values.evidenceUrl || null,
+        evidenceNote: values.evidenceNote || null,
+        evidenceAttribution: values.evidenceAttribution || null,
+        evidenceLicense: values.evidenceLicense || null,
         promote: true,
       }),
     });
-    const contribData = (await contribRes.json()) as { message?: string; error?: string };
+    const contribData = (await contribRes.json()) as {
+      message?: string;
+      error?: string;
+      contributionId?: string;
+    };
     notes.push(
       contribRes.ok
         ? contribData.message ?? "Contribution submitted."
         : contribData.error ?? "Contribution failed.",
     );
+
+    if (
+      contribRes.ok &&
+      extras.evidenceFile &&
+      extras.confirmPermanentStorage &&
+      values.evidenceLicense.trim()
+    ) {
+      const form = new FormData();
+      form.set("placeId", place.id);
+      if (contribData.contributionId) {
+        form.set("contributionId", contribData.contributionId);
+      }
+      form.set("license", values.evidenceLicense.trim());
+      if (values.evidenceAttribution) {
+        form.set("attributionText", values.evidenceAttribution);
+      }
+      if (values.evidenceNote) form.set("note", values.evidenceNote);
+      form.set("confirmRights", "true");
+      form.set("file", extras.evidenceFile);
+      const uploadRes = await fetch("/api/evidence/upload", {
+        method: "POST",
+        body: form,
+      });
+      const uploadData = (await uploadRes.json()) as {
+        message?: string;
+        error?: string;
+      };
+      notes.push(
+        uploadRes.ok
+          ? uploadData.message ?? "Evidence photo stored."
+          : uploadData.error ?? "Evidence upload failed.",
+      );
+    }
+
     notes.push(`Open: /place/${place.slug}`);
     setMessage(notes.join(" "));
   }
