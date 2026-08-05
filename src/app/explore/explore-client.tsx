@@ -383,6 +383,7 @@ export function ExploreClient() {
           /* ignore */
         }
         const fallback = applyMaptilerFallback(lat, lng, radiusMeters);
+        const code = fallback.length > 0 ? "PROVIDER_UNAVAILABLE" : "MAPTILER_FAILED";
         setNearby({
           lat,
           lng,
@@ -393,9 +394,9 @@ export function ExploreClient() {
           status: fallback.length ? "success" : "failure",
           usedFallback: fallback.length > 0,
           message: fallback.length
-            ? "Showing places from the map while place discovery recovers (UNKNOWN_PROVIDER_ERROR)."
-            : "We couldn’t reach place discovery right now. Try again or create a custom place. (UNKNOWN_PROVIDER_ERROR)",
-          errorCode: "UNKNOWN_PROVIDER_ERROR",
+            ? `Showing places from the map while place discovery recovers (${code}).`
+            : `We couldn’t reach place discovery right now. Try again or create a custom place. (${code})`,
+          errorCode: code,
         });
       } finally {
         if (!ac.signal.aborted) setNearbyLoading(false);

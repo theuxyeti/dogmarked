@@ -4,6 +4,8 @@ export type DiscoveryErrorCode =
   | "PROVIDER_RATE_LIMITED"
   | "PROVIDER_BAD_REQUEST"
   | "PROVIDER_UNAVAILABLE"
+  | "MAPTILER_FAILED"
+  | "MAPTILER_NOT_CONFIGURED"
   | "DISCOVERY_LIMIT_REACHED"
   | "AUTH_REQUIRED"
   | "UNKNOWN_PROVIDER_ERROR";
@@ -36,7 +38,36 @@ export class ProviderHttpError extends Error {
 }
 
 export function discoveryErrorFromHttp(err: ProviderHttpError): DiscoveryError {
-  if (err.status === 401 || err.status === 403) {
+  if (err.provider === "maptiler") {
+    if (err.status === 401 || err.status === 403) {
+      return {
+        code: "MAPTILER_FAILED",
+        message:
+          "Map place fallback could not authenticate. Check NEXT_PUBLIC_MAPTILER_KEY.",
+        retryable: false,
+      };
+    }
+    if (
+      err.bodySnippet.includes("NEXT_PUBLIC_MAPTILER_KEY missing") ||
+      err.status === 503
+    ) {
+      const missing = err.bodySnippet.includes("NEXT_PUBLIC_MAPTILER_KEY missing");
+      return {
+        code: missing ? "MAPTILER_NOT_CONFIGURED" : "MAPTILER_FAILED",
+        message: missing
+          ? "Map place fallback is not configured (NEXT_PUBLIC_MAPTILER_KEY)."
+          : "Map place fallback is temporarily unavailable.",
+        retryable: !missing,
+      };
+    }
+    return {
+      code: "MAPTILER_FAILED",
+      message: "Map place fallback failed. Try again or create a custom place.",
+      retryable: err.status >= 500 || err.status === 429,
+    };
+  }
+
+  if (err.status === 401 || err.status === 403 || err.status === 402) {
     return {
       code: "PROVIDER_UNAUTHORIZED",
       message: "Place discovery could not authenticate with the provider.",
@@ -71,13 +102,67 @@ export function discoveryErrorFromHttp(err: ProviderHttpError): DiscoveryError {
   };
 }
 
+function looksLikeNetworkFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = `${err.name} ${err.message}`.toLowerCase();
+  return (
+    err.name === "TypeError" ||
+    msg.includes("fetch failed") ||
+    msg.includes("network") ||
+    msg.includes("econnreset") ||
+    msg.includes("enotfound") ||
+    msg.includes("etimedout") ||
+    msg.includes("socket")
+  );
+}
+
 export function discoveryErrorFromUnknown(err: unknown): DiscoveryError {
   if (err instanceof ProviderHttpError) return discoveryErrorFromHttp(err);
+  if (looksLikeNetworkFailure(err)) {
+    return {
+      code: "PROVIDER_UNAVAILABLE",
+      message: "We couldn’t reach place discovery right now. Try again or create a custom place.",
+      retryable: true,
+    };
+  }
   return {
     code: "UNKNOWN_PROVIDER_ERROR",
     message: "We couldn’t reach place discovery right now. Try again or create a custom place.",
     retryable: true,
   };
+}
+
+/** Prefer actionable Foursquare codes; surface MapTiler when that is the only signal. */
+export function mergeDiscoveryErrors(
+  primary: DiscoveryError,
+  fallback: DiscoveryError | null,
+): DiscoveryError {
+  if (!fallback) return primary;
+  if (
+    primary.code === "UNKNOWN_PROVIDER_ERROR" ||
+    primary.code === "PROVIDER_UNAVAILABLE"
+  ) {
+    if (
+      fallback.code === "MAPTILER_FAILED" ||
+      fallback.code === "MAPTILER_NOT_CONFIGURED"
+    ) {
+      return {
+        code: fallback.code,
+        message: `${primary.message} Map fallback also failed.`,
+        retryable: primary.retryable || fallback.retryable,
+      };
+    }
+  }
+  if (
+    fallback.code === "MAPTILER_FAILED" ||
+    fallback.code === "MAPTILER_NOT_CONFIGURED"
+  ) {
+    return {
+      ...primary,
+      message: `${primary.message} Map fallback also failed (${fallback.code}).`,
+    };
+  }
+  return primary;
 }
 
 /** User-facing copy; append stable codes so production UI stays actionable. */
@@ -103,6 +188,14 @@ export function userMessageForDiscoveryError(error: DiscoveryError): string {
     case "PROVIDER_UNAVAILABLE":
       return withCode(
         "We couldn’t reach place discovery right now. Try again or create a custom place.",
+      );
+    case "MAPTILER_NOT_CONFIGURED":
+      return withCode(
+        "Map place fallback is not configured. Set NEXT_PUBLIC_MAPTILER_KEY in Vercel.",
+      );
+    case "MAPTILER_FAILED":
+      return withCode(
+        "Place discovery and map fallback both failed. Try again or create a custom place.",
       );
     default:
       return withCode(error.message);

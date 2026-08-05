@@ -4,6 +4,7 @@ import { decorateCandidatesWithDogmarked } from "@/lib/discovery/decorate";
 import {
   discoveryErrorFromUnknown,
   logDiscoveryEvent,
+  mergeDiscoveryErrors,
   ProviderHttpError,
   userMessageForDiscoveryError,
   type DiscoveryError,
@@ -23,22 +24,109 @@ import {
 import { normalizeFoursquareApiKey } from "@/lib/discovery/fsq-key";
 import { getDiscoveryProvider, getGeocodingProvider } from "@/lib/places/providers";
 
+type FallbackResult = {
+  candidates: PlaceCandidate[];
+  error: DiscoveryError | null;
+};
+
 async function mapTilerFallbackCandidates(input: {
   lat: number;
   lng: number;
   radiusMeters: number;
   limit: number;
-}): Promise<PlaceCandidate[]> {
+  started: number;
+}): Promise<FallbackResult> {
   try {
-    return await fetchMapTilerNearbyPois({
+    const candidates = await fetchMapTilerNearbyPois({
       lat: input.lat,
       lng: input.lng,
       radiusMeters: input.radiusMeters,
       limit: input.limit,
     });
-  } catch {
-    return [];
+    logDiscoveryEvent({
+      endpoint: "/geocoding",
+      provider: "maptiler",
+      httpStatus: 200,
+      durationMs: Date.now() - input.started,
+      radiusMeters: input.radiusMeters,
+      resultCount: candidates.length,
+      authenticated: true,
+      budgetBlocked: false,
+      errorCode: null,
+      errorSnippet: candidates.length ? null : "maptiler_empty_features",
+    });
+    return { candidates, error: null };
+  } catch (err) {
+    const discoveryError = discoveryErrorFromUnknown(err);
+    const httpStatus = err instanceof ProviderHttpError ? err.status : null;
+    const errorSnippet =
+      err instanceof ProviderHttpError
+        ? err.bodySnippet
+        : err instanceof Error
+          ? err.message.slice(0, 200)
+          : String(err).slice(0, 200);
+
+    logDiscoveryEvent({
+      endpoint: "/geocoding",
+      provider: "maptiler",
+      httpStatus,
+      durationMs: Date.now() - input.started,
+      radiusMeters: input.radiusMeters,
+      resultCount: 0,
+      authenticated: true,
+      budgetBlocked: false,
+      errorCode: discoveryError.code,
+      errorSnippet,
+    });
+    return { candidates: [], error: discoveryError };
   }
+}
+
+function emptyFailureResponse(args: {
+  discoveryError: DiscoveryError;
+  radiusMeters: number;
+  enrichmentMeta: NearbyDiscoveryResponse["enrichment"];
+  label?: string;
+  status: number;
+}): NextResponse {
+  return NextResponse.json(
+    {
+      candidates: [],
+      catalogCoverage: "uncovered",
+      fallbackRecommended: true,
+      radiusMeters: args.radiusMeters,
+      discoveryAvailable: false,
+      discoveryError: args.discoveryError,
+      enrichment: args.enrichmentMeta,
+      label: args.label,
+      message: userMessageForDiscoveryError(args.discoveryError),
+    } satisfies NearbyDiscoveryResponse & { message: string },
+    { status: args.status },
+  );
+}
+
+async function successWithFallback(args: {
+  fallback: PlaceCandidate[];
+  userId: string;
+  discoveryError: DiscoveryError;
+  radiusMeters: number;
+  enrichmentMeta: NearbyDiscoveryResponse["enrichment"];
+  label?: string;
+}): Promise<NextResponse> {
+  const candidates = await decorateCandidatesWithDogmarked(args.fallback, args.userId);
+  return NextResponse.json({
+    candidates,
+    catalogCoverage: "uncovered",
+    fallbackRecommended: false,
+    radiusMeters: args.radiusMeters,
+    discoveryAvailable: true,
+    usedFallback: true,
+    fallbackProvider: "maptiler",
+    discoveryError: args.discoveryError,
+    enrichment: args.enrichmentMeta,
+    label: args.label,
+    message: userMessageForDiscoveryError(args.discoveryError),
+  } satisfies NearbyDiscoveryResponse & { message: string });
 }
 
 export async function GET(request: Request) {
@@ -98,6 +186,8 @@ export async function GET(request: Request) {
     premiumDetailsEnabled: enrichment.premiumDetails,
   };
 
+  const started = Date.now();
+
   if (!discovery.nearby) {
     const discoveryError: DiscoveryError = {
       code: normalizeFoursquareApiKey(process.env.FOURSQUARE_API_KEY ?? "")
@@ -124,35 +214,26 @@ export async function GET(request: Request) {
       lng: coords.lng,
       radiusMeters,
       limit,
+      started,
     });
-    if (fallback.length > 0) {
-      const candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
-      return NextResponse.json({
-        candidates,
-        catalogCoverage: "uncovered",
-        fallbackRecommended: false,
-        radiusMeters,
-        discoveryAvailable: true,
-        usedFallback: true,
-        fallbackProvider: "maptiler",
+    if (fallback.candidates.length > 0) {
+      return successWithFallback({
+        fallback: fallback.candidates,
+        userId: auth.user.id,
         discoveryError,
-        enrichment: enrichmentMeta,
+        radiusMeters,
+        enrichmentMeta,
         label,
-        message: userMessageForDiscoveryError(discoveryError),
-      } satisfies NearbyDiscoveryResponse & { message: string });
+      });
     }
 
-    return NextResponse.json({
-      candidates: [],
-      catalogCoverage: "uncovered",
-      fallbackRecommended: true,
+    return emptyFailureResponse({
+      discoveryError: mergeDiscoveryErrors(discoveryError, fallback.error),
       radiusMeters,
-      discoveryAvailable: false,
-      discoveryError,
-      enrichment: enrichmentMeta,
+      enrichmentMeta,
       label,
-      message: userMessageForDiscoveryError(discoveryError),
-    } satisfies NearbyDiscoveryResponse & { message: string });
+      status: 503,
+    });
   }
 
   const provider = getDiscoveryProvider();
@@ -180,43 +261,28 @@ export async function GET(request: Request) {
       lng: coords.lng,
       radiusMeters,
       limit,
+      started,
     });
-    if (fallback.length > 0) {
-      const candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
-      return NextResponse.json(
-        {
-          candidates,
-          catalogCoverage: "uncovered",
-          fallbackRecommended: false,
-          radiusMeters,
-          discoveryAvailable: true,
-          usedFallback: true,
-          fallbackProvider: "maptiler",
-          discoveryError,
-          enrichment: enrichmentMeta,
-          label,
-          message: userMessageForDiscoveryError(discoveryError),
-        } satisfies NearbyDiscoveryResponse & { message: string },
-      );
+    if (fallback.candidates.length > 0) {
+      return successWithFallback({
+        fallback: fallback.candidates,
+        userId: auth.user.id,
+        discoveryError,
+        radiusMeters,
+        enrichmentMeta,
+        label,
+      });
     }
 
-    return NextResponse.json(
-      {
-        candidates: [],
-        catalogCoverage: "uncovered",
-        fallbackRecommended: true,
-        radiusMeters,
-        discoveryAvailable: false,
-        discoveryError,
-        enrichment: enrichmentMeta,
-        label,
-        message: userMessageForDiscoveryError(discoveryError),
-      } satisfies NearbyDiscoveryResponse & { message: string },
-      { status: 503 },
-    );
+    return emptyFailureResponse({
+      discoveryError: mergeDiscoveryErrors(discoveryError, fallback.error),
+      radiusMeters,
+      enrichmentMeta,
+      label,
+      status: 503,
+    });
   }
 
-  const started = Date.now();
   try {
     const raw = await provider.nearby({
       latitude: coords.lat,
@@ -233,9 +299,13 @@ export async function GET(request: Request) {
         lng: coords.lng,
         radiusMeters,
         limit,
+        started,
       });
-      if (fallback.length > 0) {
-        candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
+      if (fallback.candidates.length > 0) {
+        candidates = await decorateCandidatesWithDogmarked(
+          fallback.candidates,
+          auth.user.id,
+        );
         usedFallback = true;
       }
     }
@@ -295,9 +365,13 @@ export async function GET(request: Request) {
       lng: coords.lng,
       radiusMeters,
       limit,
+      started,
     });
-    if (fallback.length > 0) {
-      const candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
+    if (fallback.candidates.length > 0) {
+      const candidates = await decorateCandidatesWithDogmarked(
+        fallback.candidates,
+        auth.user.id,
+      );
       logDiscoveryEvent({
         endpoint: "/places/search",
         provider: "maptiler",
@@ -325,19 +399,13 @@ export async function GET(request: Request) {
       } satisfies NearbyDiscoveryResponse & { message: string });
     }
 
-    return NextResponse.json(
-      {
-        candidates: [],
-        catalogCoverage: "uncovered",
-        fallbackRecommended: true,
-        radiusMeters,
-        discoveryAvailable: false,
-        discoveryError,
-        enrichment: enrichmentMeta,
-        label,
-        message: userMessageForDiscoveryError(discoveryError),
-      } satisfies NearbyDiscoveryResponse & { message: string },
-      { status: 502 },
-    );
+    const merged = mergeDiscoveryErrors(discoveryError, fallback.error);
+    return emptyFailureResponse({
+      discoveryError: merged,
+      radiusMeters,
+      enrichmentMeta,
+      label,
+      status: 502,
+    });
   }
 }
