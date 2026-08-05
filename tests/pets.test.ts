@@ -40,9 +40,24 @@ describe("pets helpers", () => {
       is_active: true,
       public_display_enabled: false,
       breed: null,
-      photo_path: null,
+      photo_path: "user/pet/obj.jpg",
       notes: null,
     });
+    expect(pet.photoPath).toBe("user/pet/obj.jpg");
+    expect(
+      mapDogProfileRow(
+        {
+          id: pet.id,
+          user_id: pet.userId,
+          name: pet.name,
+          weight_kg: 2.3,
+          size_class: "small",
+          travels_in_carrier: true,
+          photo_path: "user/pet/obj.jpg",
+        },
+        { photoUrl: "https://signed.example/pet.jpg" },
+      ).photoPath,
+    ).toBe("https://signed.example/pet.jpg");
     expect(petToDogProfile(pet).weightKg).toBe(2.3);
     expect(activePack([pet, { ...pet, id: "x", isActive: false }])).toHaveLength(1);
   });

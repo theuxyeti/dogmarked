@@ -6,6 +6,7 @@ import {
   petToDbUpdate,
   type DogProfileRow,
 } from "@/lib/pets";
+import { signPetPhotoUrl } from "@/lib/storage/pet-photos";
 import { isSupabaseConfigured } from "@/lib/utils";
 
 const sizeEnum = z.enum(["toy", "small", "medium", "large", "giant", "unknown"]);
@@ -85,9 +86,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Pet not found." }, { status: 404 });
   }
 
+  const row = data as DogProfileRow;
+  const signed = await signPetPhotoUrl(supabase, row.photo_path);
   return NextResponse.json({
     ok: true,
-    pet: mapDogProfileRow(data as DogProfileRow),
+    pet: mapDogProfileRow(row, { photoUrl: signed }),
   });
 }
 

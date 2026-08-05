@@ -78,14 +78,18 @@ export function resolveWeightKg(input: {
   return null;
 }
 
-export function mapDogProfileRow(row: DogProfileRow): PetProfile {
+export function mapDogProfileRow(
+  row: DogProfileRow,
+  opts?: { photoUrl?: string | null },
+): PetProfile {
   const weightKg = numOrNull(row.weight_kg);
   const sizeClass = parseSizeClass(row.size_class);
   return {
     id: String(row.id),
     userId: String(row.user_id),
     name: String(row.name),
-    photoPath: row.photo_path ?? null,
+    // Prefer a signed/display URL when the caller provides one.
+    photoPath: opts?.photoUrl ?? row.photo_path ?? null,
     weightKg,
     weightLb: weightKg != null ? Math.round(kgToLb(weightKg) * 10) / 10 : null,
     sizeClass,

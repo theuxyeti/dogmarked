@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { AvatarStack } from "@/components/ui/avatar-stack";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_DOG_PROFILES } from "@/lib/places/fixtures";
@@ -15,6 +16,7 @@ import type { PetProfile, SizeClass } from "@/lib/types";
 import { tryCreateBrowserClient } from "@/lib/supabase/client";
 import { publicApiError } from "@/lib/api-errors";
 import { kgToLb } from "@/lib/units";
+import { cn } from "@/lib/utils";
 
 type SaveState = "loading" | "idle" | "unsaved" | "saving" | "saved" | "error";
 
@@ -67,6 +69,8 @@ export default function ProfilePage() {
   const [saveState, setSaveState] = useState<SaveState>("loading");
   const [message, setMessage] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [weightUnit, setWeightUnit] = useState<"lb" | "kg">("lb");
 
   useEffect(() => {
     let cancelled = false;
@@ -334,180 +338,294 @@ export default function ProfilePage() {
               : null;
 
   const packLabel = formatActivePackLabel(pets);
+  const activePets = pets.filter((p) => p.isActive);
+
+  function weightDisplay(pet: PetProfile): string {
+    if (pet.weightKg == null || !Number.isFinite(pet.weightKg)) return "Weight unknown";
+    if (weightUnit === "lb") {
+      const lb = pet.weightLb ?? pet.weightKg * 2.2046226218;
+      return `${lb.toFixed(lb >= 10 ? 0 : 1)} lb`;
+    }
+    return `${pet.weightKg.toFixed(1)} kg`;
+  }
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10 pb-28">
-      <h1 className="font-display text-4xl text-teal-deep">Account & pets</h1>
-      <p className="mt-2 text-muted">
-        {signedIn
-          ? `Signed in as ${email}`
-          : "Browsing as guest — Sugar & Munch live on this device until you sign in."}
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        Your travel pack
       </p>
-      <p className="mt-1 text-sm text-ink" id="active-pack">
+      <h1 className="font-display text-4xl text-[var(--color-brand)]">
+        Choose who&apos;s exploring
+      </h1>
+      <p className="mt-2 text-sm text-[var(--color-ink-muted)]" id="active-pack">
         {packLabel}
+        {signedIn ? ` · ${email}` : " · Guest on this device"}
       </p>
       {statusLabel ? (
-        <p className="mt-1 text-xs uppercase tracking-[0.12em] text-muted">{statusLabel}</p>
+        <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--color-ink-muted)]">
+          {statusLabel}
+        </p>
       ) : null}
 
-      <div id="pets" className="mt-6 space-y-4">
-        {pets.map((pet, index) => (
-          <div key={pet.id} className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-display text-xl text-ink">{pet.name}</p>
-              <label className="flex shrink-0 items-center gap-2 text-xs text-muted">
-                <input
-                  type="checkbox"
-                  checked={pet.isActive}
-                  disabled={saveState === "loading"}
-                  onChange={() => toggleActive(pet, index)}
-                />
-                In active pack
-              </label>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                Name
-                <Input
-                  className="mt-1"
-                  value={pet.name}
-                  disabled={saveState === "loading"}
-                  onChange={(e) => updatePet(index, { name: e.target.value })}
-                />
-              </label>
-              <label className="text-sm">
-                Weight (kg)
-                <Input
-                  className="mt-1"
-                  type="number"
-                  step="0.1"
-                  value={pet.weightKg ?? ""}
-                  disabled={saveState === "loading"}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    updatePet(index, {
-                      weightKg: Number.isFinite(n) ? n : null,
-                    });
-                  }}
-                />
-              </label>
-              <label className="text-sm">
-                Size
-                <select
-                  className="mt-1 flex h-11 w-full rounded-lg border border-border bg-card px-3 text-sm"
-                  value={pet.sizeClass}
-                  disabled={saveState === "loading"}
-                  onChange={(e) =>
-                    updatePet(index, {
-                      sizeClass: e.target.value as SizeClass,
-                    })
-                  }
-                >
-                  <option value="toy">Toy</option>
-                  <option value="small">Small</option>
-                  <option value="medium">Medium</option>
-                  <option value="large">Large</option>
-                  <option value="giant">Giant</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                Breed
-                <Input
-                  className="mt-1"
-                  value={pet.breed ?? ""}
-                  disabled={saveState === "loading"}
-                  onChange={(e) => updatePet(index, { breed: e.target.value })}
-                />
-              </label>
-            </div>
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={pet.travelsInCarrier}
-                disabled={saveState === "loading"}
-                onChange={(e) =>
-                  updatePet(index, { travelsInCarrier: e.target.checked })
-                }
-              />
-              Travels in a carrier
-            </label>
-            <label className="mt-2 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={pet.publicDisplayEnabled}
-                disabled={saveState === "loading"}
-                onChange={(e) =>
-                  updatePet(index, { publicDisplayEnabled: e.target.checked })
-                }
-              />
-              Show name & photo on public trip reports
-            </label>
-            <label className="mt-3 block text-sm">
-              Notes
-              <Input
-                className="mt-1"
-                value={pet.notes ?? ""}
-                disabled={saveState === "loading"}
-                onChange={(e) => updatePet(index, { notes: e.target.value })}
-              />
-            </label>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <label className="text-sm">
-                <span className="sr-only">Pet photo</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={
-                    saveState === "loading" ||
-                    uploadingId === pet.id ||
-                    !signedIn ||
-                    pet.id.startsWith("local-")
-                  }
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    void onPhotoSelected(pet, file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              {pet.photoPath ? (
-                <span className="text-xs text-muted">Photo saved</span>
-              ) : null}
-              {uploadingId === pet.id ? (
-                <span className="text-xs text-muted">Uploading…</span>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void removePet(pet, index)}
-                disabled={saveState === "loading" || saveState === "saving"}
-              >
-                Remove
-              </Button>
-            </div>
-          </div>
-        ))}
+      <div className="mt-4 flex items-center gap-2">
+        <span className="text-xs text-[var(--color-ink-muted)]">Show weights in</span>
+        <div className="inline-flex rounded-lg border border-[var(--color-border)] p-0.5">
+          {(["lb", "kg"] as const).map((u) => (
+            <button
+              key={u}
+              type="button"
+              onClick={() => setWeightUnit(u)}
+              className={cn(
+                "min-h-9 rounded-md px-3 text-xs font-semibold",
+                weightUnit === u
+                  ? "bg-[var(--color-brand)] text-white"
+                  : "text-[var(--color-ink-muted)]",
+              )}
+            >
+              {u}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Keep legacy #dogs anchor for older menu links */}
+      {activePets.length > 0 ? (
+        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <AvatarStack
+            items={activePets.map((p) => ({
+              id: p.id,
+              src: p.photoPath,
+              alt: p.name,
+              fallback: p.name.slice(0, 1).toUpperCase(),
+            }))}
+            size="lg"
+            label={packLabel}
+          />
+          <div>
+            <p className="text-sm font-semibold text-[var(--color-ink)]">{packLabel}</p>
+            <p className="text-xs text-[var(--color-ink-muted)]">
+              Active on the map and place cards
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      <div id="pets" className="mt-6 space-y-3">
+        {pets.map((pet, index) => {
+          const editing = editingId === pet.id;
+          return (
+            <article
+              key={pet.id}
+              className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--elevation-1)]"
+            >
+              <div className="flex gap-4">
+                <label className="relative shrink-0 cursor-pointer">
+                  <span className="sr-only">
+                    {pet.photoPath ? "Change photo" : "Add photo"}
+                  </span>
+                  <span className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-[var(--color-brand-soft)] text-2xl font-semibold text-[var(--color-brand)]">
+                    {pet.photoPath ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={pet.photoPath}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      pet.name.slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    disabled={
+                      saveState === "loading" ||
+                      uploadingId === pet.id ||
+                      !signedIn ||
+                      pet.id.startsWith("local-")
+                    }
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      void onPhotoSelected(pet, file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-action)] px-2 py-0.5 text-[10px] font-semibold text-white">
+                    {uploadingId === pet.id
+                      ? "…"
+                      : pet.photoPath
+                        ? "Edit"
+                        : "Add"}
+                  </span>
+                </label>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h2 className="font-display text-2xl text-[var(--color-ink)]">
+                        {pet.name}
+                      </h2>
+                      <p className="text-sm text-[var(--color-ink-muted)]">
+                        {pet.sizeClass !== "unknown" ? pet.sizeClass : "Size unknown"}
+                        {" · "}
+                        {weightDisplay(pet)}
+                        {pet.travelsInCarrier ? " · Carrier" : ""}
+                      </p>
+                    </div>
+                    <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-[var(--color-ink)]">
+                      <input
+                        type="checkbox"
+                        checked={pet.isActive}
+                        disabled={saveState === "loading"}
+                        onChange={() => toggleActive(pet, index)}
+                        className="h-4 w-4 accent-[var(--color-brand)]"
+                      />
+                      Active
+                    </label>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={editing ? "default" : "outline"}
+                      onClick={() =>
+                        setEditingId(editing ? null : pet.id)
+                      }
+                    >
+                      {editing ? "Done" : "Edit"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void removePet(pet, index)}
+                      disabled={saveState === "loading" || saveState === "saving"}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {editing ? (
+                <div className="mt-4 grid gap-3 border-t border-[var(--color-border)] pt-4 sm:grid-cols-2">
+                  <label className="text-sm">
+                    Name
+                    <Input
+                      className="mt-1"
+                      value={pet.name}
+                      onChange={(e) => updatePet(index, { name: e.target.value })}
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Weight ({weightUnit})
+                    <Input
+                      className="mt-1"
+                      type="number"
+                      step="0.1"
+                      value={
+                        weightUnit === "lb"
+                          ? (pet.weightLb ??
+                            (pet.weightKg != null
+                              ? Number((pet.weightKg * 2.2046226218).toFixed(1))
+                              : ""))
+                          : (pet.weightKg ?? "")
+                      }
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (!Number.isFinite(n)) {
+                          updatePet(index, { weightKg: null, weightLb: null });
+                          return;
+                        }
+                        if (weightUnit === "lb") {
+                          updatePet(index, {
+                            weightLb: n,
+                            weightKg: n / 2.2046226218,
+                          });
+                        } else {
+                          updatePet(index, {
+                            weightKg: n,
+                            weightLb: n * 2.2046226218,
+                          });
+                        }
+                      }}
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Size
+                    <select
+                      className="mt-1 flex h-11 w-full rounded-lg border border-border bg-card px-3 text-sm"
+                      value={pet.sizeClass}
+                      onChange={(e) =>
+                        updatePet(index, {
+                          sizeClass: e.target.value as SizeClass,
+                        })
+                      }
+                    >
+                      <option value="toy">Toy</option>
+                      <option value="small">Small</option>
+                      <option value="medium">Medium</option>
+                      <option value="large">Large</option>
+                      <option value="giant">Giant</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    Breed
+                    <Input
+                      className="mt-1"
+                      value={pet.breed ?? ""}
+                      onChange={(e) => updatePet(index, { breed: e.target.value })}
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={pet.travelsInCarrier}
+                      onChange={(e) =>
+                        updatePet(index, { travelsInCarrier: e.target.checked })
+                      }
+                    />
+                    Travels in a carrier
+                  </label>
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={pet.publicDisplayEnabled}
+                      onChange={(e) =>
+                        updatePet(index, {
+                          publicDisplayEnabled: e.target.checked,
+                        })
+                      }
+                    />
+                    Show on public trip reports
+                  </label>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() => void addPet()}
+          disabled={saveState === "loading" || saveState === "saving"}
+          className="flex min-h-24 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] text-sm font-semibold text-[var(--color-brand)]"
+        >
+          Add another pet
+        </button>
+      </div>
+
       <div id="dogs" className="sr-only" aria-hidden />
 
       <div className="mt-6 flex flex-wrap gap-2">
         <Button
+          variant="action"
           onClick={() => void saveChanges()}
           disabled={saveState === "loading" || saveState === "saving"}
         >
-          Save changes
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => void addPet()}
-          disabled={saveState === "loading" || saveState === "saving"}
-        >
-          Add a pet
+          Save pack
         </Button>
         {signedIn ? (
           <form action="/auth/signout" method="post">
@@ -521,13 +639,9 @@ export default function ProfilePage() {
           </Button>
         )}
       </div>
-      {pets.length > 0 ? (
-        <p className="mt-3 text-xs text-muted">
-          Check “In active pack” on one or more pets, then save — that pack
-          drives “Exploring with…” and compatibility.
-        </p>
+      {message ? (
+        <p className="mt-4 text-sm text-[var(--color-ink-muted)]">{message}</p>
       ) : null}
-      {message ? <p className="mt-4 text-sm text-muted">{message}</p> : null}
     </div>
   );
 }

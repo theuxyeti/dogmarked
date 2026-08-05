@@ -27,3 +27,29 @@ export function extForMime(mime: string): "jpg" | "png" | "webp" | null {
   if (mime === "image/webp") return "webp";
   return null;
 }
+
+type StorageSigner = {
+  storage: {
+    from: (bucket: string) => {
+      createSignedUrl: (
+        path: string,
+        expiresIn: number,
+      ) => Promise<{ data: { signedUrl: string } | null; error: unknown }>;
+    };
+  };
+};
+
+/** Turn a storage object path into a short-lived signed URL for the client. */
+export async function signPetPhotoUrl(
+  supabase: StorageSigner,
+  photoPath: string | null | undefined,
+  expiresInSeconds = 60 * 60 * 24,
+): Promise<string | null> {
+  if (!photoPath) return null;
+  if (/^https?:\/\//i.test(photoPath)) return photoPath;
+  const { data, error } = await supabase.storage
+    .from(PET_PHOTOS_BUCKET)
+    .createSignedUrl(photoPath, expiresInSeconds);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+}

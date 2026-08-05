@@ -6,6 +6,7 @@ import {
   petToDbInsert,
   type DogProfileRow,
 } from "@/lib/pets";
+import { signPetPhotoUrl } from "@/lib/storage/pet-photos";
 import { isSupabaseConfigured } from "@/lib/utils";
 
 const sizeEnum = z.enum(["toy", "small", "medium", "large", "giant", "unknown"]);
@@ -56,7 +57,13 @@ export async function GET() {
     );
   }
 
-  const pets = (data ?? []).map((row) => mapDogProfileRow(row as DogProfileRow));
+  const pets = await Promise.all(
+    (data ?? []).map(async (row) => {
+      const raw = row as DogProfileRow;
+      const signed = await signPetPhotoUrl(supabase, raw.photo_path);
+      return mapDogProfileRow(raw, { photoUrl: signed });
+    }),
+  );
   return NextResponse.json({
     ok: true,
     pets,
@@ -115,8 +122,10 @@ export async function POST(request: Request) {
     );
   }
 
+  const row = data as DogProfileRow;
+  const signed = await signPetPhotoUrl(supabase, row.photo_path);
   return NextResponse.json({
     ok: true,
-    pet: mapDogProfileRow(data as DogProfileRow),
+    pet: mapDogProfileRow(row, { photoUrl: signed }),
   });
 }

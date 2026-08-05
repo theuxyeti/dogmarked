@@ -11,6 +11,7 @@ import {
   PET_PHOTO_MIME_TYPES,
   buildPetPhotoStoragePath,
   extForMime,
+  signPetPhotoUrl,
 } from "@/lib/storage/pet-photos";
 import { isSupabaseConfigured } from "@/lib/utils";
 
@@ -136,9 +137,10 @@ export async function POST(request: Request) {
     await supabase.storage.from(PET_PHOTOS_BUCKET).remove([previousPath]);
   }
 
+  const signed = await signPetPhotoUrl(supabase, storagePath);
   return NextResponse.json({
     ok: true,
     storagePath,
-    pet: mapDogProfileRow(updated as DogProfileRow),
+    pet: mapDogProfileRow(updated as DogProfileRow, { photoUrl: signed }),
   });
 }

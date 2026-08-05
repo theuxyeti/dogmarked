@@ -5,7 +5,20 @@ import {
   mapDogProfileRow,
   type DogProfileRow,
 } from "@/lib/pets";
+import { signPetPhotoUrl } from "@/lib/storage/pet-photos";
 import { isSupabaseConfigured } from "@/lib/utils";
+
+async function mapPetsWithPhotos(
+  supabase: Parameters<typeof signPetPhotoUrl>[0],
+  rows: DogProfileRow[],
+) {
+  return Promise.all(
+    rows.map(async (row) => {
+      const signed = await signPetPhotoUrl(supabase, row.photo_path);
+      return mapDogProfileRow(row, { photoUrl: signed });
+    }),
+  );
+}
 
 const bodySchema = z.object({
   petIds: z.array(z.string().uuid()).max(20),
@@ -104,7 +117,10 @@ export async function PUT(request: Request) {
         );
       }
 
-      const pets = (rows ?? []).map((row) => mapDogProfileRow(row as DogProfileRow));
+      const pets = await mapPetsWithPhotos(
+        supabase,
+        (rows ?? []) as DogProfileRow[],
+      );
       return NextResponse.json({
         ok: true,
         pets,
@@ -119,8 +135,9 @@ export async function PUT(request: Request) {
     );
   }
 
-  const pets = (Array.isArray(data) ? data : []).map((row) =>
-    mapDogProfileRow(row as DogProfileRow),
+  const pets = await mapPetsWithPhotos(
+    supabase,
+    (Array.isArray(data) ? data : []) as DogProfileRow[],
   );
 
   return NextResponse.json({

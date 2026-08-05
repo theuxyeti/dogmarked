@@ -30,9 +30,18 @@ export function PlaceVerdict({ summary, loading, className }: Props) {
   }
 
   const status = summary?.overallStatus ?? "unknown";
-  const lines = summary
-    ? evidenceLinesFromSummary(summary)
-    : ["No public Dogmarked reports yet."];
+  const isUnknown =
+    status === "unknown" &&
+    (!summary ||
+      (summary.confirmationCount === 0 &&
+        summary.recentVisitCount === 0 &&
+        !summary.hasOfficialSource));
+
+  const lines = isUnknown
+    ? []
+    : summary
+      ? evidenceLinesFromSummary(summary)
+      : [];
 
   const soft =
     status === "confirmed"
@@ -73,12 +82,16 @@ export function PlaceVerdict({ summary, loading, className }: Props) {
       <div className="pl-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-display text-lg text-[var(--color-ink)]">
-            {verdictHeadline(status)}
+            {isUnknown ? "Dog policy not documented yet" : verdictHeadline(status)}
           </h3>
-          <StatusBadge status={summaryToStatusBadge(status)} />
+          {!isUnknown ? (
+            <StatusBadge status={summaryToStatusBadge(status)} />
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-          {verdictSupport(status)}
+          {isUnknown
+            ? "Be the first to add what you learned."
+            : verdictSupport(status)}
         </p>
         <ul className="mt-2 space-y-1 text-sm text-[var(--color-ink)]">
           {lines.map((line) => (
