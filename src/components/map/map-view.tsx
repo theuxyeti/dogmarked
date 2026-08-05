@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import maplibregl, { type Map, type MapLayerMouseEvent, type Marker } from "maplibre-gl";
+import maplibregl, {
+  type Map as MapLibreMap,
+  type MapLayerMouseEvent,
+  type Marker,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { categoryEmoji } from "@/lib/discovery/category-icons";
+import {
+  createClusterMarkerElement,
+  createPolicyMarkerElement,
+} from "@/lib/map/create-marker-element";
+import type { MarkerShellStatus } from "@/lib/map/marker-policy";
 import type { PlaceWithPolicy } from "@/lib/types";
 
 export type MapPlace = PlaceWithPolicy & {
@@ -11,6 +19,8 @@ export type MapPlace = PlaceWithPolicy & {
   saveStatus?: "want_to_go" | "been_there" | "visited";
   emoji?: string;
   contributorCount?: number;
+  /** Dogmarked policy shell status (never inferred from Foursquare). */
+  policyStatus?: MarkerShellStatus;
 };
 
 export type MapClickTarget =
@@ -51,6 +61,8 @@ export type MapViewApi = {
   whenIdle: (timeoutMs?: number) => Promise<void>;
 };
 
+type FeatureHit = ReturnType<MapLibreMap["queryRenderedFeatures"]>;
+
 export interface MapViewProps {
   places: MapPlace[];
   selectedSlug?: string | null;
@@ -87,6 +99,8 @@ const POI_LAYER_HINTS = [
 const RADIUS_SOURCE = "dm-search-radius";
 const RADIUS_FILL = "dm-search-radius-fill";
 const RADIUS_LINE = "dm-search-radius-line";
+const CLUSTER_MAX_ZOOM = 12;
+const CLUSTER_CELL_PX = 56;
 
 function styleUrl() {
   const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
@@ -96,16 +110,65 @@ function styleUrl() {
   return "https://demotiles.maplibre.org/style.json";
 }
 
-function statusColorClass(place: MapPlace): string {
-  if (place.saveLayer === "candidate") return "dm-marker dm-marker--candidate";
-  if (place.saveLayer === "others") return "dm-marker dm-marker--others";
-  if (place.saveLayer === "shared") return "dm-marker dm-marker--been";
-  if (place.saveLayer === "mine") {
-    const been = place.saveStatus === "been_there" || place.saveStatus === "visited";
-    return been ? "dm-marker dm-marker--been" : "dm-marker dm-marker--want";
+function placePolicyStatus(place: MapPlace): MarkerShellStatus {
+  if (place.policyStatus) return place.policyStatus;
+  return "unknown";
+}
+
+function isSelectedPlace(
+  place: MapPlace,
+  selectedSlug?: string | null,
+  selectedCandidateId?: string | null,
+) {
+  return (
+    place.slug === selectedSlug ||
+    place.id === selectedCandidateId ||
+    place.slug === selectedCandidateId
+  );
+}
+
+type ClusterBucket = {
+  places: MapPlace[];
+  lat: number;
+  lng: number;
+};
+
+/** Simple screen-space clustering for HTML markers at low zoom. */
+function clusterPlaces(
+  map: MapLibreMap,
+  places: MapPlace[],
+): Array<{ kind: "place"; place: MapPlace } | { kind: "cluster"; bucket: ClusterBucket }> {
+  const zoom = map.getZoom();
+  if (zoom >= CLUSTER_MAX_ZOOM || places.length <= 1) {
+    return places.map((place) => ({ kind: "place" as const, place }));
   }
-  if (!place.policy) return "dm-marker dm-marker--unverified";
-  return "dm-marker dm-marker--been";
+
+  const cells = new Map<string, ClusterBucket>();
+  for (const place of places) {
+    const pt = map.project([place.lng, place.lat]);
+    const key = `${Math.floor(pt.x / CLUSTER_CELL_PX)}:${Math.floor(pt.y / CLUSTER_CELL_PX)}`;
+    const existing = cells.get(key);
+    if (existing) {
+      existing.places.push(place);
+      const n = existing.places.length;
+      existing.lat = (existing.lat * (n - 1) + place.lat) / n;
+      existing.lng = (existing.lng * (n - 1) + place.lng) / n;
+    } else {
+      cells.set(key, { places: [place], lat: place.lat, lng: place.lng });
+    }
+  }
+
+  const out: Array<
+    { kind: "place"; place: MapPlace } | { kind: "cluster"; bucket: ClusterBucket }
+  > = [];
+  for (const bucket of cells.values()) {
+    if (bucket.places.length === 1) {
+      out.push({ kind: "place", place: bucket.places[0]! });
+    } else {
+      out.push({ kind: "cluster", bucket });
+    }
+  }
+  return out;
 }
 
 /** Approximate circle polygon in lon/lat for the search radius. */
@@ -156,7 +219,7 @@ export function MapView({
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<Map | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const tempMarkerRef = useRef<Marker | null>(null);
   const onSelectRef = useRef(onSelect);
@@ -168,6 +231,9 @@ export function MapView({
   const onMapApiRef = useRef(onMapApi);
   const chooseModeRef = useRef(chooseLocationMode);
   const placesRef = useRef(places);
+  const selectedSlugRef = useRef(selectedSlug);
+  const selectedCandidateIdRef = useRef(selectedCandidateId);
+  const zoomRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
@@ -196,6 +262,12 @@ export function MapView({
   useEffect(() => {
     placesRef.current = places;
   }, [places]);
+  useEffect(() => {
+    selectedSlugRef.current = selectedSlug;
+  }, [selectedSlug]);
+  useEffect(() => {
+    selectedCandidateIdRef.current = selectedCandidateId;
+  }, [selectedCandidateId]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -246,7 +318,7 @@ export function MapView({
         [point.x - px, point.y - px],
         [point.x + px, point.y + px],
       ];
-      let features: ReturnType<Map["queryRenderedFeatures"]> = [];
+      let features: FeatureHit = [];
       try {
         const layerIds = (map.getStyle()?.layers ?? [])
           .filter(
@@ -389,6 +461,10 @@ export function MapView({
       markersRef.current = [];
       tempMarkerRef.current?.remove();
       tempMarkerRef.current = null;
+      if (zoomRafRef.current != null) {
+        cancelAnimationFrame(zoomRafRef.current);
+        zoomRafRef.current = null;
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -408,40 +484,78 @@ export function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    const renderMarkers = () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
 
-    places.forEach((place) => {
-      const el = document.createElement("button");
-      el.type = "button";
-      const emoji =
-        place.emoji ?? categoryEmoji(place.category);
-      el.setAttribute("aria-label", `${place.name}, ${place.category}`);
-      el.className = statusColorClass(place as MapPlace);
-      const isSelected =
-        place.slug === selectedSlug ||
-        place.id === selectedCandidateId ||
-        place.slug === selectedCandidateId;
-      el.dataset.selected = isSelected ? "true" : "false";
-      el.textContent = emoji;
-      el.style.fontSize = place.saveLayer === "candidate" ? "14px" : "16px";
-      if (place.contributorCount && place.contributorCount > 1) {
-        const badge = document.createElement("span");
-        badge.className = "dm-marker-count";
-        badge.textContent = String(place.contributorCount);
-        el.appendChild(badge);
+      const items = clusterPlaces(map, placesRef.current);
+      for (const item of items) {
+        if (item.kind === "cluster") {
+          const el = createClusterMarkerElement(item.bucket.places.length);
+          el.addEventListener("click", (e) => {
+            e.stopPropagation();
+            map.easeTo({
+              center: [item.bucket.lng, item.bucket.lat],
+              zoom: Math.min(map.getZoom() + 1.5, CLUSTER_MAX_ZOOM + 0.5),
+              duration: 400,
+            });
+          });
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat([item.bucket.lng, item.bucket.lat])
+            .addTo(map);
+          markersRef.current.push(marker);
+          continue;
+        }
+
+        const place = item.place;
+        const status = placePolicyStatus(place);
+        const selected = isSelectedPlace(
+          place,
+          selectedSlugRef.current,
+          selectedCandidateIdRef.current,
+        );
+        const el = createPolicyMarkerElement({
+          category: place.category,
+          policyStatus: status,
+          selected,
+          emoji: place.emoji,
+          name: place.name,
+          contributorCount: place.contributorCount,
+          compact: place.saveLayer === "candidate",
+        });
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSelectRef.current?.(place);
+          onMapClickRef.current?.({ type: "dogmarked", place });
+        });
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([place.lng, place.lat])
+          .addTo(map);
+        markersRef.current.push(marker);
       }
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onSelectRef.current?.(place);
-        onMapClickRef.current?.({ type: "dogmarked", place });
-      });
+    };
 
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([place.lng, place.lat])
-        .addTo(map);
-      markersRef.current.push(marker);
-    });
+    renderMarkers();
+
+    const onZoom = () => {
+      if (zoomRafRef.current != null) cancelAnimationFrame(zoomRafRef.current);
+      zoomRafRef.current = requestAnimationFrame(() => {
+        zoomRafRef.current = null;
+        renderMarkers();
+      });
+    };
+    map.on("zoomend", onZoom);
+
+    return () => {
+      map.off("zoomend", onZoom);
+      if (zoomRafRef.current != null) {
+        cancelAnimationFrame(zoomRafRef.current);
+        zoomRafRef.current = null;
+      }
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+    };
   }, [places, selectedSlug, selectedCandidateId]);
 
   useEffect(() => {

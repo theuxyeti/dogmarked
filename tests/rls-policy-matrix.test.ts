@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   canAccessAuditEvents,
+  canIncludeReportInPublicSummary,
   canInsertPolicyContribution,
+  canReadPetPolicyReport,
   canReadPolicyContribution,
   canReadUserPlaceSave,
   canSelectDogPolicies,
+  canSelectDogProfile,
   canUpdatePolicyContribution,
   canWriteDogPolicies,
   isServiceRoleServerOnly,
@@ -189,6 +192,70 @@ describe("RLS permission matrix (Phase 1 intent)", () => {
         ownerId: "u1",
         viewerId: "u2",
         isModerator: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("pet policy reports: public readable; private owner-only; public-only for summaries", () => {
+    expect(
+      canReadPetPolicyReport({
+        role: "anon",
+        ownerId: "u1",
+        viewerId: null,
+        visibility: "public",
+      }),
+    ).toBe(true);
+    expect(
+      canReadPetPolicyReport({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u2",
+        visibility: "private",
+      }),
+    ).toBe(false);
+    expect(
+      canReadPetPolicyReport({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        visibility: "private",
+      }),
+    ).toBe(true);
+    expect(canIncludeReportInPublicSummary("private")).toBe(false);
+    expect(canIncludeReportInPublicSummary("public")).toBe(true);
+  });
+
+  it("dog_profiles: private by default; public display opt-in", () => {
+    expect(
+      canSelectDogProfile({
+        role: "anon",
+        ownerId: "u1",
+        viewerId: null,
+        publicDisplayEnabled: false,
+      }),
+    ).toBe(false);
+    expect(
+      canSelectDogProfile({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u2",
+        publicDisplayEnabled: false,
+      }),
+    ).toBe(false);
+    expect(
+      canSelectDogProfile({
+        role: "authenticated",
+        ownerId: "u1",
+        viewerId: "u1",
+        publicDisplayEnabled: false,
+      }),
+    ).toBe(true);
+    expect(
+      canSelectDogProfile({
+        role: "anon",
+        ownerId: "u1",
+        viewerId: null,
+        publicDisplayEnabled: true,
       }),
     ).toBe(true);
   });

@@ -5,12 +5,14 @@ import Link from "next/link";
 import { BookingCta } from "@/components/place/booking-cta";
 import { ClaimBusiness } from "@/components/place/claim-business";
 import { CompatibilityBadge } from "@/components/place/compatibility-badge";
+import { PlaceLinksCta } from "@/components/place/place-links-cta";
 import { Button } from "@/components/ui/button";
 import type { AffiliateLink } from "@/lib/affiliates";
 import { formatAddress, serviceAnimalTerm } from "@/lib/address";
 import { computeCompatibility } from "@/lib/compatibility";
 import { t } from "@/lib/i18n";
 import { publicApiError } from "@/lib/api-errors";
+import { bookingFlags, type PlaceLink } from "@/lib/place-links";
 import { DEFAULT_DOG_PROFILES } from "@/lib/places/fixtures";
 import { formatCurrency, formatWeight } from "@/lib/units";
 import type { DogProfile, PlaceWithPolicy, SaveStatus, SaveVisibility } from "@/lib/types";
@@ -79,11 +81,13 @@ export function PlaceDetail({
   place,
   dogs = DEFAULT_DOG_PROFILES,
   affiliateLink = null,
+  placeLinks = null,
   onClose,
 }: {
   place: PlaceWithPolicy;
   dogs?: DogProfile[];
   affiliateLink?: AffiliateLink | null;
+  placeLinks?: PlaceLink[] | null;
   onClose?: () => void;
 }) {
   const [message, setMessage] = useState<string | null>(null);
@@ -439,7 +443,14 @@ export function PlaceDetail({
           ) : null}
         </div>
       </section>
-      <BookingCta link={affiliateLink} placeName={place.name} />
+      <PlaceLinksCta
+        links={placeLinks}
+        fallbackOfficialUrl={place.website}
+        placeName={place.name}
+      />
+      {bookingFlags().affiliateEnabled ? (
+        <BookingCta link={affiliateLink} placeName={place.name} />
+      ) : null}
       <ClaimBusiness placeId={place.id} />
       {message ? <p className="text-sm text-muted">{message}</p> : null}
     </article>

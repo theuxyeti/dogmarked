@@ -14,7 +14,8 @@ export interface BookingCtaProps {
 }
 
 /**
- * Disclosed affiliate booking CTA.
+ * Disclosed affiliate booking CTA (BOOKING_AFFILIATE_ENABLED).
+ * Prefer PlaceLinksCta for non-affiliate official / verified Booking links.
  * Disabled (and non-navigating) unless an active link is present.
  */
 export function BookingCta({ link, placeName, className }: BookingCtaProps) {

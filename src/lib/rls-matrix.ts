@@ -218,7 +218,89 @@ export const RLS_PERMISSION_MATRIX: MatrixCell[] = [
     service_role: true,
     notes: "Server writes only; clients select",
   },
+  {
+    resource: "pet_policy_reports",
+    action: "select_public",
+    anon: true,
+    authenticated: true,
+    service_role: true,
+    notes: "Public visibility readable; private owner-only",
+  },
+  {
+    resource: "pet_policy_reports",
+    action: "insert_update_delete_own",
+    anon: false,
+    authenticated: true,
+    service_role: true,
+    notes: "Owners CRUD own reports only",
+  },
+  {
+    resource: "dog_profiles",
+    action: "select_private",
+    anon: false,
+    authenticated: true,
+    service_role: true,
+    notes: "Owner CRUD; private by default",
+  },
+  {
+    resource: "dog_profiles",
+    action: "select_public_display",
+    anon: true,
+    authenticated: true,
+    service_role: true,
+    notes: "Only when public_display_enabled; prefer public_pet_identities()",
+  },
+  {
+    resource: "place_links",
+    action: "select_verified_active",
+    anon: true,
+    authenticated: true,
+    service_role: true,
+    notes: "Public read verified+active only; creators/mods see own/all",
+  },
+  {
+    resource: "place_links",
+    action: "insert_non_affiliate_official_booking",
+    anon: false,
+    authenticated: true,
+    service_role: true,
+    notes: "Contributors insert is_affiliate=false official/booking; affiliate path stays admin/service",
+  },
 ];
+
+/** Owners manage pets; private details stay private unless public_display_enabled. */
+export function canSelectDogProfile(args: {
+  role: ClientRole;
+  ownerId: string;
+  viewerId: string | null;
+  publicDisplayEnabled: boolean;
+}): boolean {
+  if (args.role === "service_role") return true;
+  if (args.viewerId !== null && args.viewerId === args.ownerId) return true;
+  return args.publicDisplayEnabled;
+}
+
+/** Private pet policy reports never contribute to public confirmation summaries. */
+export function canIncludeReportInPublicSummary(visibility: "private" | "public"): boolean {
+  return visibility === "public";
+}
+
+export function canReadPetPolicyReport(args: {
+  role: ClientRole;
+  ownerId: string;
+  viewerId: string | null;
+  visibility: "private" | "public";
+  isModerator?: boolean;
+}): boolean {
+  if (args.role === "service_role") return true;
+  if (args.visibility === "public") return true;
+  if (args.isModerator) return true;
+  return (
+    args.role === "authenticated" &&
+    args.viewerId !== null &&
+    args.viewerId === args.ownerId
+  );
+}
 
 export function matrixAllows(
   cell: MatrixCell,

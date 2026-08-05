@@ -7,33 +7,32 @@ This file is the **architecture + acceptance** source for Dogmarked. Day-to-day 
 
 ---
 
-## Product promise (simplified MVP — current focus)
+## Product promise (current focus)
 
-> Find a place, save it, tag it, and see it on your map.
+> Where can Sugar and Munch actually go, and what should we know before arriving?
 
-Dogmarked is a **personal location map** (apartment-finder / travel-planning energy):
+**Completed foundation (Smart Nearby Discovery):** authenticated locality search, explicit nearby discovery, pin-and-radius search, selective canonical saves, cached selected-place enrichment, private/public saves, My Places / Community layers.
 
-1. Find hotels, restaurants, beaches, parks, and other places (search or map tap).
-2. Save as **Want to go** or **Been there**, with optional note and dog-access badges.
-3. Choose **Private** or **Visible to others**.
-4. Toggle an overlay of **other people’s public pins** on the same map.
+**Phase 12 (Pet-First Map) — complete.** Checklist in [`tasks.md`](../tasks.md) + [`roadmap.md`](./roadmap.md) + [`design-system.md`](./design-system.md). Hosted migrations **016–018** applied.
 
-**Not in MVP UI:** Community feed, collections, policy confidence, compatibility scores, affiliates, follow graphs, advanced filters, moderation consoles as primary destinations.
+Landed: **Modern Travel Field Guide** visual system (6A), pet profiles / active pack, semantic category markers, structured dog-policy evidence, community trip reports, rich place cards, note-to-policy suggestions, official sources, and provider-neutral official/Booking.com links (`isAffiliate=false` until approval).
 
-**Foundation separation (still true for deferred trust work):**  
-Location → personal save → (later) public contribution → (later) trusted canonical policy
+Foursquare supplies place identity and optional media. Dogmarked supplies trustworthy pet-access intelligence. Provider candidates begin as **dog policy unknown**. “Rich” means travel-guide depth **and** distinctive visuals—not a denser generic SaaS panel.
+
+**Not in this phase:** generic social feed, likes/star ratings, gamification, Booking Demand API, affiliate tracking before approval, global place-data import, PMTiles/catalog workers, Storybook-only tooling, broad secondary-page restyles before Explore is visually complete.
+
+**Foundation separation:**  
+Location → personal save → public trip report / evidence → derived community policy summary (never treat Foursquare as dog-policy truth)
 
 ---
 
-## Future backlog (deferred from MVP)
+## Future backlog (deferred)
 
-These may return later; keep tables/APIs if harmless, but they must not appear in primary navigation:
-
-- Community destination, curated maps, follow users/collections
-- Canonical policy engine, confidence %, compatibility verdicts, moderation queues
-- Affiliate booking CTAs and partner reporting surfaces
-- Trip planning, gamification, alerts, algorithmic discovery
-- Full policy contribution / evidence workflows as the default path
+- Global FSQ Open Source imports, coverage polygons, PMTiles, Redis
+- Curated maps, follow graphs as primary destinations
+- Affiliate CTAs after approval (`BOOKING_AFFILIATE_ENABLED`)
+- Trip planning, alerts, algorithmic discovery
+- Broad website scraping / automatic AI policy publication
 
 ---
 
@@ -390,22 +389,53 @@ Primary loop only: find → save → tag → map.
 - [x] Place composer over map (category, status, dog badges, note, visibility)
 - [x] Preview drawer/sheet (XOR desktop/mobile)
 - [x] Migration **014** — `dog_badges`, `been_there`, public overlay RPC, categories
-- [ ] Apply migration 014 on hosted Supabase
+- [x] Apply migration 014 on hosted Supabase
 
-### Phase 11 — Smart Nearby Discovery MVP *(active)*
+### Phase 11 — Smart Nearby Discovery MVP *(foundation complete)*
 
 On-demand Foursquare Places for authenticated users; save only selected places; independent My places / Community layers.
 
-- [x] `FoursquarePlaceProvider` — nearby, details, photos, tips, `resolveCandidate`
+- [x] `FoursquarePlaceProvider` — nearby, details, photos, tips, `resolveCandidate` *(live Places API; not a stub)*
 - [x] Auth-gated `/api/discovery/*` with discovery vs enrichment budgets
 - [x] Locality search → nearby list; Add a place → choose-location + radius circle
 - [x] Batch Dogmarked decorate for candidate thumbnails / contributor counts
 - [x] Rich selected-place card; category artwork; custom-place fallback
 - [x] Migration **015** — `place_provider_cache`, `external_api_usage`, map preferences
-- [ ] Apply migrations 014–015 on hosted Supabase; set `FOURSQUARE_API_KEY` on Vercel
-- [ ] Smoke: Lauterbrunnen nearby, pin-radius, two-user privacy
+- [x] Hosted migrations 014–015 + `FOURSQUARE_API_KEY` (ops: keep key valid; tips default off going forward)
+- [x] Smoke: Lauterbrunnen nearby, pin-radius, MapTiler fallback when FSQ fails
 
 **Deferred (Future Scaling):** FSQ Open Source regional imports, coverage polygons, PMTiles, Redis — revisit at ~500–1,000 users or when API cost/rate limits warrant it.
+
+### Phase 12 — Pet-First Map and Visual Experience *(complete)*
+
+Extend the completed discovery MVP. Plan source: Cursor plan **Dogmarked Pet-First Map and Visual Experience** (`smart_nearby_discovery_ae063e17`). Do not reimplement Phases 1–5 of that plan unless a regression audit requires it.
+
+**Implementation order:** audit → **6A visual foundation** → 6 pets → 7 markers → 8 evidence → 9 card → 10 contributions → 11 links → 12 verification. Phase 6A before 7 and 9. Explore loop first; no broad restyle until tokens/anatomy agreed ([`design-system.md`](./design-system.md)).
+
+- [x] **6A** Visual foundation — Modern Travel Field Guide tokens, type, spacing, primitives, motion, empty states, a11y; update design-system + `/design-system`
+- [x] **6** Pet identity — clickable account nav; pets APIs + active pack; photos; cautious compatibility (uses 6A)
+- [x] **7** Semantic map — centralized category emoji registry; policy-colored marker shells; Known dog-friendly filter
+- [x] **8** Structured policy evidence — `pet_policy_reports` / `policy_evidence`; derived summaries; conflicts/freshness
+- [x] **9** Place card 2.0 — travel-guide hero/verdict/chips/trip feed on 6A drawer/sheet anatomy
+- [x] **10** Contributions — trip reports; note-to-policy suggestions with confirmation; official source submit
+- [x] **11** Place links — provider-neutral official/Booking stubs (`isAffiliate=false`); no fabricated URLs
+- [x] **12** Cost/quality — `FSQ_TIPS_ENABLED=false` by default; budgets/cache/fallbacks; RLS matrix + tests; build green
+
+**Additive migrations 016–018** (`pets` / active pack, `pet_policy_reports` + evidence, `place_links`) are in the repo and **applied on hosted Supabase**. Keep `dog_badges` for backward compatibility.
+
+**Provider pricing:** rely on usage counters, dashboard reconciliation, caching, and configurable hard limits—not static dollar estimates.
+
+**Env defaults for this phase:**
+
+```text
+FSQ_DISCOVERY_ENABLED=true
+FSQ_ENRICHMENT_ENABLED=true
+FSQ_PHOTOS_ENABLED=true
+FSQ_TIPS_ENABLED=false
+BOOKING_LINKS_ENABLED=true
+BOOKING_AFFILIATE_ENABLED=false
+BOOKING_DEMAND_API_ENABLED=false
+```
 
 ---
 

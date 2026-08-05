@@ -31,7 +31,18 @@ YYYYMMDDHHMMSS_NNN_short_snake_description.sql
 | 013 | `20260304121300_013_hale_patisserie_seed.sql` | Hale Pâtisserie Coral Gables identity place | ✅ |
 | 014 | `20260304121400_014_mvp_save_badges.sql` | MVP dog_badges, been_there, public overlay RPC | ✅ |
 | 015 | `20260304121500_015_discovery_cache_usage.sql` | place_provider_cache, external_api_usage, map layer prefs | ✅ |
+| 016 | `20260304121600_016_pets_and_active_pack.sql` | Extend `dog_profiles` (photo/breed/active pack/public display), `set_active_pack` + `public_pet_identities` RPCs, `pet-photos` Storage | ✅ |
+| 017 | `20260304121700_017_pet_policy_reports.sql` | `pet_policy_reports` + additive `policy_evidence` (excerpt/retrieved_at/official); keep legacy `policy_reports` flags | ✅ |
+| 018 | `20260304121800_018_place_links.sql` | Provider-neutral `place_links` + click events/RPC (`is_affiliate` default false); keep `affiliate_links` for future monetization | ✅ |
 
-**Next file to add:** `YYYYMMDDHHMMSS_016_<description>.sql`
+**Next file to add:** `YYYYMMDDHHMMSS_019_<description>.sql`
+
+`dog_badges` on saves remains for backward compatibility; it is not the only policy model going forward.
+
+**017 notes:** Existing contribution-linked `policy_evidence` rows are preserved. New columns: `report_id`, `excerpt`, `retrieved_at`, `source_title`, `is_official`. Public confirmation summaries use **public** `pet_policy_reports` only.
+
+**018 notes:** Public clients read verified + active `place_links` only. Authenticated contributors (place creator, save, contribution, or pet policy report) may insert non-affiliate `official` / `booking` rows. Click instrumentation uses `record_place_link_click` and does not require `is_affiliate`.
 
 When you apply a migration on hosted Supabase, check it off in this table (and in `tasks.md`).
+
+**Phase 12 ops:** Migrations **016–018** applied on hosted Supabase.

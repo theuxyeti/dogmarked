@@ -32,7 +32,7 @@ export function fsqFlags() {
     discoveryEnabled: envFlag("FSQ_DISCOVERY_ENABLED", true),
     enrichmentEnabled: envFlag("FSQ_ENRICHMENT_ENABLED", true),
     photosEnabled: envFlag("FSQ_PHOTOS_ENABLED", true),
-    tipsEnabled: envFlag("FSQ_TIPS_ENABLED", true),
+    tipsEnabled: envFlag("FSQ_TIPS_ENABLED", false),
     discoveryCallLimit: envInt("FSQ_MONTHLY_DISCOVERY_CALL_LIMIT", 1000),
     enrichmentBudgetUsd: envFloat("FSQ_MONTHLY_ENRICHMENT_BUDGET_USD", 25),
     /** Rough USD estimates — verify against Foursquare dashboard. */

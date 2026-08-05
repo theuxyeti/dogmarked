@@ -7,6 +7,12 @@ import {
 } from "@/components/policy/policy-history";
 import { Button } from "@/components/ui/button";
 import type { AffiliateLink } from "@/lib/affiliates";
+import {
+  mapPlaceLinkRow,
+  visiblePlaceLinks,
+  type PlaceLink,
+  type PlaceLinkRow,
+} from "@/lib/place-links";
 import { getPlaceBySlug } from "@/lib/places/queries";
 import { isSupabaseConfigured } from "@/lib/utils";
 
@@ -51,6 +57,26 @@ async function loadAffiliate(placeId: string): Promise<AffiliateLink | null> {
   }
 }
 
+async function loadPlaceLinks(placeId: string): Promise<PlaceLink[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("place_links")
+      .select("*")
+      .eq("place_id", placeId)
+      .eq("is_active", true)
+      .eq("is_verified", true)
+      .order("provider", { ascending: true });
+    return visiblePlaceLinks(
+      (data ?? []).map((row) => mapPlaceLinkRow(row as PlaceLinkRow)),
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function loadPolicyVersions(placeId: string): Promise<PolicyVersionItem[]> {
   if (!isSupabaseConfigured()) return [];
   try {
@@ -89,8 +115,9 @@ export default async function PlacePage({
   const place = await getPlaceBySlug(slug);
   if (!place) notFound();
 
-  const [affiliateLink, versions] = await Promise.all([
+  const [affiliateLink, placeLinks, versions] = await Promise.all([
     loadAffiliate(place.id),
+    loadPlaceLinks(place.id),
     loadPolicyVersions(place.id),
   ]);
 
@@ -99,7 +126,11 @@ export default async function PlacePage({
       <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
         <Link href="/explore">← Back to map</Link>
       </Button>
-      <PlaceDetail place={place} affiliateLink={affiliateLink} />
+      <PlaceDetail
+        place={place}
+        affiliateLink={affiliateLink}
+        placeLinks={placeLinks}
+      />
       <section className="mt-8 border-t border-border pt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-teal-deep">
           Policy history

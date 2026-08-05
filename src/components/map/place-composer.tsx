@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import {
   DOG_BADGES,
   PLACE_CATEGORIES,
+  PLACE_CATEGORIES_UI,
   type DogBadgeId,
   type MvpCategoryId,
   type MvpSaveStatus,
@@ -131,16 +132,16 @@ export function PlaceComposer({
       <fieldset>
         <legend className="mb-2 text-sm font-semibold">Category</legend>
         <div className="flex flex-wrap gap-2">
-          {PLACE_CATEGORIES.map((c) => (
+          {PLACE_CATEGORIES_UI.map((c) => (
             <button
               key={c.id}
               type="button"
               onClick={() => setCategory(c.id)}
               className={cn(
-                "min-h-11 rounded-full border px-3 text-sm font-medium transition-colors duration-150",
+                "min-h-11 rounded-lg border px-3 text-sm font-medium transition-colors duration-150",
                 category === c.id
-                  ? "border-[var(--color-brand-600)] bg-[var(--color-brand-100)] text-[var(--color-brand-700)]"
-                  : "border-[var(--color-border)] bg-white text-[var(--color-text)]",
+                  ? "border-[var(--color-brand)] bg-[var(--color-brand-soft)] text-[var(--color-brand-hover)]"
+                  : "border-[var(--color-border)] bg-[var(--color-surface-raised)] text-[var(--color-ink)]",
               )}
             >
               {c.label}

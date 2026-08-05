@@ -14,18 +14,23 @@ export function mapFsqCategoryToMvp(
   if (/hotel|lodging|motel|hostel|resort|bed\s*&?\s*breakfast/.test(n)) {
     return { category: "hotel", sourceCategory };
   }
-  if (
-    /restaurant|cafe|café|coffee|bar|bakery|food|dining|pub|bistro|pizza|dessert/.test(
-      n,
-    )
-  ) {
-    return { category: "food_drink", sourceCategory };
+  if (/cafe|café|coffee|bakery|tea\s*room|patisserie/.test(n)) {
+    return { category: "cafe", sourceCategory };
+  }
+  if (/bar|pub|wine|brewery|nightlife|cocktail|tavern|winery/.test(n)) {
+    return { category: "bar", sourceCategory };
+  }
+  if (/restaurant|food|dining|bistro|pizza|dessert|diner|eatery/.test(n)) {
+    return { category: "restaurant", sourceCategory };
   }
   if (/beach|shore|coast/.test(n)) return { category: "beach", sourceCategory };
   if (/park|trail|garden|forest|nature|hiking|playground/.test(n)) {
     return { category: "park", sourceCategory };
   }
-  if (/museum|attraction|theme\s*park|zoo|aquarium|stadium|theater|theatre/.test(n)) {
+  if (/museum/.test(n)) {
+    return { category: "landmark", sourceCategory };
+  }
+  if (/attraction|theme\s*park|zoo|aquarium|stadium|theater|theatre/.test(n)) {
     return { category: "attraction", sourceCategory };
   }
   if (/monument|landmark|historic|memorial|castle|church|temple/.test(n)) {
@@ -34,11 +39,20 @@ export function mapFsqCategoryToMvp(
   if (/shop|store|mall|boutique|market|retail/.test(n)) {
     return { category: "shopping", sourceCategory };
   }
-  if (/ferry|transit|station|airport|bus|train|transport|boat|harbor|harbour/.test(n)) {
-    return { category: "transport", sourceCategory };
+  if (/ferry|boat|harbor|harbour|marina|pier/.test(n)) {
+    return { category: "ferry", sourceCategory };
+  }
+  if (/airport|aerodrome|air\s*terminal/.test(n)) {
+    return { category: "airport", sourceCategory };
+  }
+  if (/transit|station|bus|train|metro|subway|rail|transport/.test(n)) {
+    return { category: "transit", sourceCategory };
   }
   if (/pet|veterinar|groom|dog\s*park|animal/.test(n)) {
     return { category: "pet_service", sourceCategory };
+  }
+  if (/city|town|village|locality|destination|neighborhood|neighbourhood/.test(n)) {
+    return { category: "destination", sourceCategory };
   }
   return { category: "other", sourceCategory };
 }

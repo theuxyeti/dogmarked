@@ -8,6 +8,9 @@ import { isSupabaseConfigured } from "@/lib/utils";
 
 const mvpCategories = [
   "hotel",
+  "restaurant",
+  "cafe",
+  "bar",
   "food_drink",
   "beach",
   "park",

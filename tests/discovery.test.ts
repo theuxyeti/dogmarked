@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { mapFsqCategoryToMvp } from "@/lib/discovery/fsq-category-map";
 import {
   clampRadiusMeters,
@@ -8,6 +8,7 @@ import {
   UI_MAX_RADIUS_M,
 } from "@/lib/discovery/types";
 import { categoryEmoji } from "@/lib/discovery/category-icons";
+import { fsqFlags } from "@/lib/discovery/usage";
 
 describe("clampRadiusMeters", () => {
   it("defaults invalid values", () => {
@@ -29,10 +30,17 @@ describe("mapFsqCategoryToMvp", () => {
   it("maps common categories", () => {
     expect(mapFsqCategoryToMvp([{ name: "Hotel" }]).category).toBe("hotel");
     expect(mapFsqCategoryToMvp([{ name: "Coffee Shop" }]).category).toBe(
-      "food_drink",
+      "cafe",
+    );
+    expect(mapFsqCategoryToMvp([{ name: "Wine Bar" }]).category).toBe("bar");
+    expect(mapFsqCategoryToMvp([{ name: "Italian Restaurant" }]).category).toBe(
+      "restaurant",
     );
     expect(mapFsqCategoryToMvp([{ name: "National Park" }]).category).toBe(
       "park",
+    );
+    expect(mapFsqCategoryToMvp([{ name: "Bus Station" }]).category).toBe(
+      "transit",
     );
   });
 
@@ -47,6 +55,7 @@ describe("mapFsqCategoryToMvp", () => {
 describe("categoryEmoji", () => {
   it("returns emoji for known categories", () => {
     expect(categoryEmoji("hotel")).toBe("🏨");
+    expect(categoryEmoji("ferry")).toBe("⛴️");
     expect(categoryEmoji("unknown-cat")).toBe("✨");
   });
 });
@@ -63,5 +72,21 @@ describe("dedupe priority helpers", () => {
     // Merge rule: require name match (or provider id), not coordinates alone
     const shouldMerge = sameName && sameCoords;
     expect(shouldMerge).toBe(false);
+  });
+});
+
+describe("fsqFlags cost defaults", () => {
+  afterEach(() => {
+    delete process.env.FSQ_TIPS_ENABLED;
+  });
+
+  it("defaults tips off when FSQ_TIPS_ENABLED unset", () => {
+    delete process.env.FSQ_TIPS_ENABLED;
+    expect(fsqFlags().tipsEnabled).toBe(false);
+  });
+
+  it("allows tips when FSQ_TIPS_ENABLED=true", () => {
+    process.env.FSQ_TIPS_ENABLED = "true";
+    expect(fsqFlags().tipsEnabled).toBe(true);
   });
 });

@@ -1,60 +1,128 @@
 @import "tailwindcss";
 
 :root {
-  /* Simplified MVP palette */
-  --color-brand-700: #084a45;
-  --color-brand-600: #0b5f59;
-  --color-brand-500: #11756e;
-  --color-brand-100: #ddeeea;
-
-  --color-accent-600: #d96544;
-  --color-accent-500: #ee7d59;
-  --color-accent-100: #fbe8e0;
-
-  --color-canvas: #f7f5ef;
-  --color-surface: #fffefb;
-  --color-surface-muted: #edf3f1;
+  /* Modern Travel Field Guide — semantic color tokens (Phase 6A) */
+  --color-ink: #17231f;
+  --color-ink-muted: #64716c;
+  --color-canvas: #f6f2e9;
+  --color-surface: #fffdf8;
+  --color-surface-raised: #ffffff;
+  --color-surface-muted: #eaf1ee;
   --color-sand: #efe5d2;
+  --color-border: #d8dfdb;
+  --color-border-strong: #b9c7c1;
 
-  --color-ink: #18221f;
-  --color-text: #2c3834;
-  --color-text-muted: #64726e;
-  --color-border: #d8deda;
+  --color-brand: #0b675f;
+  --color-brand-hover: #07544e;
+  --color-brand-soft: #dcece8;
+  --color-action: #f47b5a;
+  --color-action-hover: #dc6547;
+  --color-action-soft: #fde7df;
+  --color-highlight: #f2b94b;
+  --color-highlight-soft: #fff1c9;
 
-  --color-success: #207a50;
-  --color-warning: #a86515;
-  --color-danger: #b43e46;
-  --color-focus: #2f6fed;
+  /* Scale aliases used by existing components */
+  --color-brand-700: var(--color-brand-hover);
+  --color-brand-600: var(--color-brand);
+  --color-brand-500: #11756e;
+  --color-brand-100: var(--color-brand-soft);
+  --color-accent-600: var(--color-action-hover);
+  --color-accent-500: var(--color-action);
+  --color-accent-100: var(--color-action-soft);
+  --color-text: var(--color-ink);
+  --color-text-muted: var(--color-ink-muted);
+
+  --color-success: #31845d;
+  --color-warning: #bd7621;
+  --color-danger: #bd4848;
+  --color-focus: #2078f4;
+  --focus-ring: var(--color-focus);
+
+  /* Dog-policy status (markers, chips, verdicts) */
+  --policy-confirmed: #31845d;
+  --policy-confirmed-soft: #e1f0e7;
+  --policy-restricted: #bd7621;
+  --policy-restricted-soft: #f8ead6;
+  --policy-community: #16766d;
+  --policy-community-soft: #dceeea;
+  --policy-unknown: #6d7873;
+  --policy-unknown-soft: #edf0ee;
+  --policy-not-allowed: #bd4848;
+  --policy-not-allowed-soft: #f7e0e0;
+
+  /* Spacing — 4px scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-9: 2.25rem;
+  --space-10: 2.5rem;
+  --space-11: 2.75rem;
+  --space-12: 3rem;
+
+  /* Radius roles */
+  --radius-sm: 0.5rem; /* 8 — small controls, thumbnails */
+  --radius-md: 0.75rem; /* 12 — cards, inputs */
+  --radius-lg: 1rem; /* 16 — content panels */
+  --radius-xl: 1.25rem; /* 20 — drawers */
+  --radius-2xl: 1.5rem; /* 24 — mobile sheets */
+  --radius-pill: 9999px;
+  --radius: var(--radius-md);
+
+  /* Elevation — use sparingly */
+  --elevation-1: 0 1px 2px color-mix(in oklab, var(--color-ink) 8%, transparent);
+  --elevation-2: 0 4px 12px color-mix(in oklab, var(--color-ink) 12%, transparent);
+  --elevation-3: 0 12px 28px color-mix(in oklab, var(--color-ink) 16%, transparent);
+  --elevation-marker: 0 2px 6px color-mix(in oklab, var(--color-ink) 22%, transparent);
+
+  /* Typography scale */
+  --text-display: 2.25rem;
+  --text-page-title: 1.75rem;
+  --text-place-title: 1.375rem;
+  --text-section: 1.125rem;
+  --text-body: 1rem;
+  --text-body-sm: 0.875rem;
+  --text-label: 0.8125rem;
+  --text-caption: 0.75rem;
+  --text-overline: 0.6875rem;
 
   /* Legacy aliases used across older components */
-  --dm-teal: var(--color-brand-600);
-  --dm-teal-deep: var(--color-brand-700);
+  --dm-teal: var(--color-brand);
+  --dm-teal-deep: var(--color-brand-hover);
   --dm-sand: var(--color-sand);
   --dm-ink: var(--color-ink);
   --dm-paper: var(--color-canvas);
   --dm-foam: var(--color-surface-muted);
-  --dm-muted: var(--color-text-muted);
+  --dm-muted: var(--color-ink-muted);
   --dm-border: var(--color-border);
   --dm-danger: var(--color-danger);
-  --teal: var(--color-brand-600);
-  --teal-deep: var(--color-brand-700);
+  --dm-good: var(--policy-confirmed);
+  --dm-ask: var(--policy-restricted);
+  --dm-neutral-poi: var(--policy-unknown);
+  --teal: var(--color-brand);
+  --teal-deep: var(--color-brand-hover);
   --sand: var(--color-sand);
   --ink: var(--color-ink);
   --paper: var(--color-canvas);
   --foam: var(--color-surface-muted);
-  --muted: var(--color-text-muted);
+  --muted: var(--color-ink-muted);
   --border: var(--color-border);
   --danger: var(--color-danger);
+  --good: var(--policy-confirmed);
+  --ask: var(--policy-restricted);
 
   --background: var(--color-canvas);
   --foreground: var(--color-ink);
   --card: var(--color-surface);
-  --primary: var(--color-brand-600);
+  --primary: var(--color-brand);
   --primary-foreground: #f7fffe;
   --secondary: var(--color-sand);
   --secondary-foreground: var(--color-ink);
-  --accent: var(--color-brand-100);
-  --radius: 0.75rem;
+  --accent: var(--color-brand-soft);
 
   --font-display: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
@@ -78,6 +146,12 @@
   --color-paper: var(--paper);
   --color-foam: var(--foam);
   --color-danger: var(--danger);
+  --color-good: var(--good);
+  --color-ask: var(--ask);
+  --color-brand: var(--color-brand);
+  --color-action: var(--color-action);
+  --color-surface: var(--color-surface);
+  --color-canvas: var(--color-canvas);
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
   --radius-lg: var(--radius);
@@ -131,36 +205,82 @@ a {
   }
 }
 
-/* Map markers — MVP status colors */
+/* Focus utility — keyboard rings use --focus-ring */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Map markers — branded shells; color = Dogmarked policy; coral = temp only */
 .dm-marker {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9999px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
   border: 2px solid #fff;
-  box-shadow: 0 2px 6px color-mix(in oklab, var(--color-ink) 22%, transparent);
+  box-shadow: var(--elevation-marker);
   cursor: pointer;
-  transition: transform 160ms ease;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    outline-color 180ms ease;
   line-height: 1;
   padding: 0;
   position: relative;
+  background: var(--policy-unknown);
+  color: #fff;
+}
+
+.dm-marker-emoji {
+  font-size: 15px;
+  line-height: 1;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.25));
+  pointer-events: none;
+  user-select: none;
+}
+
+.dm-marker--compact {
+  width: 28px;
+  height: 28px;
+}
+
+.dm-marker--compact .dm-marker-emoji {
+  font-size: 13px;
 }
 
 .dm-marker--temp {
   width: 36px;
   height: 36px;
-  background: var(--color-accent-500);
+  background: var(--color-action);
   border: 3px solid #fff;
   font-size: 18px;
   animation: dm-pin-pulse 1.6s ease-in-out infinite;
 }
 
+.dm-marker--cluster {
+  width: 36px;
+  height: 36px;
+  background: var(--color-brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-sans, inherit);
+}
+
 @keyframes dm-pin-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent-500) 45%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-action) 45%, transparent);
   }
   50% {
     box-shadow: 0 0 0 10px transparent;
@@ -171,6 +291,10 @@ a {
   .dm-marker--temp {
     animation: none;
   }
+
+  .dm-marker {
+    transition: none;
+  }
 }
 
 .dm-marker-count {
@@ -179,8 +303,8 @@ a {
   right: -6px;
   min-width: 14px;
   height: 14px;
-  border-radius: 9999px;
-  background: var(--color-brand-700);
+  border-radius: var(--radius-pill);
+  background: var(--color-brand-hover);
   color: #fff;
   font-size: 9px;
   font-weight: 700;
@@ -189,50 +313,111 @@ a {
   padding: 0 3px;
 }
 
-.dm-marker[data-selected="true"] {
-  transform: scale(1.25);
-  outline: 2px solid var(--color-brand-700);
+.dm-marker:hover,
+.dm-marker:focus-visible {
+  transform: scale(1.12);
+  z-index: 2;
+}
+
+.dm-marker:focus-visible {
+  outline: 2px solid var(--color-brand);
   outline-offset: 2px;
 }
 
+.dm-marker[data-selected="true"] {
+  transform: scale(1.28);
+  outline: 2px solid var(--color-brand);
+  outline-offset: 3px;
+  box-shadow: var(--elevation-2);
+  z-index: 3;
+}
+
+.dm-marker--confirmed {
+  background: var(--policy-confirmed);
+}
+
+.dm-marker--restricted {
+  background: var(--policy-restricted);
+}
+
+.dm-marker--community {
+  background: var(--policy-community);
+}
+
+.dm-marker--unknown {
+  background: var(--policy-unknown);
+}
+
+.dm-marker--not-allowed {
+  background: var(--policy-not-allowed);
+}
+
+/* Legacy save-layer shells — kept for design-system / older callers */
 .dm-marker--want {
   background: transparent;
-  border: 2.5px solid var(--color-accent-500);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-accent-500) 25%, transparent);
+  border: 2.5px solid var(--color-action);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-action) 25%, transparent);
 }
 
 .dm-marker--been {
-  background: var(--color-brand-600);
+  background: var(--policy-confirmed);
 }
 
 .dm-marker--others {
-  background: #9aa8a4;
-  width: 12px;
-  height: 12px;
-  opacity: 0.85;
+  background: var(--policy-community);
 }
 
 .dm-marker--candidate {
-  background: var(--color-accent-100);
-  border: 2px dashed var(--color-accent-500);
-  width: 12px;
-  height: 12px;
-}
-
-.dm-marker--unverified {
-  background: #64716d;
-  width: 12px;
-  height: 12px;
+  background: var(--policy-unknown);
   border-style: dashed;
 }
 
-/* Back-compat aliases */
+.dm-marker--unverified {
+  background: var(--policy-unknown);
+  border-style: dashed;
+}
+
+/* Neutral contextual POI — never implies dog policy */
+.dm-poi-marker {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--policy-unknown);
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+/* Compact policy pin shells */
 .dm-policy-marker {
   width: 16px;
   height: 16px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   border: 2px solid #fff;
-  background: var(--color-brand-600);
-  box-shadow: 0 2px 6px color-mix(in oklab, var(--color-ink) 22%, transparent);
+  background: var(--policy-unknown);
+  box-shadow: var(--elevation-marker);
   cursor: pointer;
+}
+
+.dm-policy-marker[data-status="confirmed"],
+.dm-policy-marker[data-status="dogs_welcome"] {
+  background: var(--policy-confirmed);
+}
+
+.dm-policy-marker[data-status="restricted"],
+.dm-policy-marker[data-status="ask_first"] {
+  background: var(--policy-restricted);
+}
+
+.dm-policy-marker[data-status="community"] {
+  background: var(--policy-community);
+}
+
+.dm-policy-marker[data-status="unknown"] {
+  background: var(--policy-unknown);
+}
+
+.dm-policy-marker[data-status="not_allowed"],
+.dm-policy-marker[data-status="not-allowed"] {
+  background: var(--policy-not-allowed);
 }

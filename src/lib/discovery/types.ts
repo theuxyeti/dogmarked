@@ -1,4 +1,6 @@
 import type { MvpCategoryId } from "@/lib/mvp/taxonomy";
+import type { MarkerShellStatus } from "@/lib/map/marker-policy";
+import type { PetPolicyOverallStatus } from "@/lib/policy/evidence";
 
 export type DiscoveryProviderId = "foursquare" | "maptiler" | "dogmarked" | "custom";
 
@@ -29,6 +31,13 @@ export interface PlaceCandidate {
   publicContributorCount?: number;
   alreadySavedByMe?: boolean;
   mySaveStatus?: "want_to_go" | "been_there";
+  /**
+   * Dogmarked-derived policy shell for markers/filters.
+   * Never inferred from Foursquare friendliness.
+   */
+  policyStatus?: MarkerShellStatus;
+  /** Structured overall status when pet_policy_reports exist. */
+  overallStatus?: PetPolicyOverallStatus;
 }
 
 export interface PlacePhoto {

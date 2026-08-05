@@ -30,12 +30,27 @@ import {
   type PlaceTip,
 } from "@/lib/discovery/types";
 import {
+  passesDogFriendlyFilter,
+  resolveMarkerPolicyStatus,
+  type DogFriendlyFilterMode,
+  type MarkerShellStatus,
+} from "@/lib/map/marker-policy";
+import {
   categoryLabel,
+  categoryToDb,
   dbToCategory,
   type MvpCategoryId,
   type MvpSaveStatus,
 } from "@/lib/mvp/taxonomy";
+import type { PlaceLink } from "@/lib/place-links";
+import {
+  LOCAL_PETS_STORAGE_KEY,
+  activePackAsDogs,
+  dogProfileToLocalPet,
+} from "@/lib/pets";
+import { DEFAULT_DOG_PROFILES } from "@/lib/places/fixtures";
 import type { ExternalPlace } from "@/lib/places/provider";
+import type { DogProfile, PetProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const MapView = dynamic(
@@ -116,6 +131,9 @@ export function ExploreClient() {
 
   const [view, setView] = useState<"map" | "list">("map");
   const [statusTab, setStatusTab] = useState<"all" | MvpSaveStatus>("all");
+  /** Default: include unknown places (discovery). Never uses Foursquare friendliness. */
+  const [dogFriendlyFilter, setDogFriendlyFilter] =
+    useState<DogFriendlyFilterMode>("include_unknown");
   const [mySaves, setMySaves] = useState<MySavePin[]>([]);
   const [publicPins, setPublicPins] = useState<PublicPin[]>([]);
   const [bbox, setBbox] = useState<{
@@ -131,6 +149,8 @@ export function ExploreClient() {
   const [details, setDetails] = useState<PlaceDetails | null>(null);
   const [photos, setPhotos] = useState<PlacePhoto[]>([]);
   const [tips, setTips] = useState<PlaceTip[]>([]);
+  const [tipsEnabled, setTipsEnabled] = useState(false);
+  const [placeLinks, setPlaceLinks] = useState<PlaceLink[]>([]);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [tipsLoading, setTipsLoading] = useState(false);
@@ -146,6 +166,16 @@ export function ExploreClient() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [pets, setPets] = useState<PetProfile[]>(() =>
+    DEFAULT_DOG_PROFILES.map((d) => dogProfileToLocalPet(d)),
+  );
+  const activeDogs = useMemo<DogProfile[]>(
+    () => {
+      const pack = activePackAsDogs(pets);
+      return pack.length ? pack : DEFAULT_DOG_PROFILES;
+    },
+    [pets],
+  );
 
   const abortRef = useRef<AbortController | null>(null);
   const enrichAbortRef = useRef<AbortController | null>(null);
@@ -157,6 +187,35 @@ export function ExploreClient() {
     apply();
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  // Active pack for place-card compatibility (local first, then /api/pets when signed in)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_PETS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as PetProfile[];
+        if (Array.isArray(parsed) && parsed.length) setPets(parsed);
+      }
+    } catch {
+      /* keep defaults */
+    }
+
+    void fetch("/api/pets")
+      .then((r) => r.json())
+      .then((j: { pets?: PetProfile[]; ok?: boolean }) => {
+        if (Array.isArray(j.pets) && j.pets.length) {
+          setPets(j.pets);
+          try {
+            localStorage.setItem(LOCAL_PETS_STORAGE_KEY, JSON.stringify(j.pets));
+          } catch {
+            /* ignore */
+          }
+        }
+      })
+      .catch(() => {
+        /* guest / offline — DEFAULT_DOG_PROFILES */
+      });
   }, []);
 
   // Hydrate layer prefs for signed-in users (per-account, not leaked across users)
@@ -263,6 +322,7 @@ export function ExploreClient() {
       setDetails(null);
       setPhotos([]);
       setTips([]);
+      setPlaceLinks([]);
       setComposer(null);
       setPreviewMine(null);
       setNearbyLoading(true);
@@ -413,6 +473,22 @@ export function ExploreClient() {
     setDetails(null);
     setPhotos([]);
     setTips([]);
+    setTipsEnabled(false);
+    setPlaceLinks([]);
+
+    const dogmarkedPlaceId = candidate.canonicalId;
+    if (dogmarkedPlaceId) {
+      void fetch(`/api/place-links?placeId=${encodeURIComponent(dogmarkedPlaceId)}`, {
+        signal: ac.signal,
+      })
+        .then((r) => r.json())
+        .then((j: { links?: PlaceLink[] }) => {
+          if (!ac.signal.aborted) setPlaceLinks(j.links ?? []);
+        })
+        .catch(() => {
+          if (!ac.signal.aborted) setPlaceLinks([]);
+        });
+    }
 
     if (candidate.provider !== "foursquare") {
       // Try resolve MapTiler → FSQ
@@ -456,8 +532,10 @@ export function ExploreClient() {
       if (json.details) setDetails(json.details);
 
       const photosOk = json.enrichment?.photosEnabled !== false;
-      const tipsOk = json.enrichment?.tipsEnabled !== false;
+      // Tips default off (FSQ_TIPS_ENABLED=false) — only show when explicitly enabled
+      const tipsOk = json.enrichment?.tipsEnabled === true;
 
+      setTipsEnabled(tipsOk);
       setPhotosLoading(photosOk);
       setTipsLoading(tipsOk);
 
@@ -571,13 +649,20 @@ export function ExploreClient() {
   function openComposerFromCandidate() {
     if (!selectedCandidate) return;
     const d = details;
+    const mine = selectedCandidate.canonicalId
+      ? mySaves.find((s) => s.placeId === selectedCandidate.canonicalId)
+      : undefined;
     setComposer({
       name: d?.name ?? selectedCandidate.name,
       address: d?.formattedAddress ?? selectedCandidate.formattedAddress,
       lat: selectedCandidate.latitude,
       lng: selectedCandidate.longitude,
       category: selectedCandidate.category,
-      placeId: selectedCandidate.canonicalId,
+      placeId: selectedCandidate.canonicalId ?? mine?.placeId,
+      status: mine?.status ?? selectedCandidate.mySaveStatus,
+      visibility: mine?.visibility,
+      note: mine?.privateNotes ?? undefined,
+      dogBadges: (mine?.dogBadges as ComposerDraft["dogBadges"]) ?? undefined,
     });
   }
 
@@ -631,8 +716,7 @@ export function ExploreClient() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: payload.name,
-            category:
-              payload.category === "food_drink" ? "restaurant" : payload.category,
+            category: categoryToDb(payload.category),
             lat: payload.lat,
             lng: payload.lng,
             address: payload.address ?? null,
@@ -658,8 +742,7 @@ export function ExploreClient() {
           visibility: payload.visibility,
           privateNotes: payload.note || null,
           dogBadges: payload.dogBadges,
-          category:
-            payload.category === "food_drink" ? "restaurant" : payload.category,
+          category: categoryToDb(payload.category),
         }),
       });
       const saveJson = (await saveRes.json()) as { error?: string; message?: string };
@@ -699,11 +782,15 @@ export function ExploreClient() {
         saveStatus: MvpSaveStatus;
         contributorCount?: number;
         emoji: string;
+        policyStatus: MarkerShellStatus;
       }
     >();
 
     if (showMine) {
       for (const p of mySaves) {
+        const policyStatus = resolveMarkerPolicyStatus({
+          dogBadges: p.dogBadges,
+        });
         byPlace.set(p.placeId, {
           id: p.placeId,
           name: p.name,
@@ -719,6 +806,7 @@ export function ExploreClient() {
           saveLayer: "mine",
           saveStatus: p.status,
           emoji: categoryEmoji(dbToCategory(p.category)),
+          policyStatus,
         });
       }
     }
@@ -733,6 +821,12 @@ export function ExploreClient() {
         if (existing) {
           existing.saveLayer = "shared";
           existing.contributorCount = counts.get(p.placeId);
+          if (existing.policyStatus === "unknown") {
+            existing.policyStatus = resolveMarkerPolicyStatus({
+              dogBadges: p.dogBadges,
+              communityReported: true,
+            });
+          }
           continue;
         }
         if (showMine && mySaves.some((m) => m.placeId === p.placeId)) continue;
@@ -752,6 +846,10 @@ export function ExploreClient() {
           saveStatus: p.status,
           contributorCount: counts.get(p.placeId),
           emoji: categoryEmoji(dbToCategory(p.category)),
+          policyStatus: resolveMarkerPolicyStatus({
+            dogBadges: p.dogBadges,
+            communityReported: true,
+          }),
         });
       }
     }
@@ -759,9 +857,15 @@ export function ExploreClient() {
     return [...byPlace.values()];
   }, [mySaves, publicPins, showMine, showCommunity]);
 
-  const candidatePlaces = useMemo(() => {
+  const filteredNearbyCandidates = useMemo(() => {
     if (!nearby) return [];
-    return nearby.candidates.map((n) => ({
+    return nearby.candidates.filter((c) =>
+      passesDogFriendlyFilter(c.policyStatus ?? "unknown", dogFriendlyFilter),
+    );
+  }, [nearby, dogFriendlyFilter]);
+
+  const candidatePlaces = useMemo(() => {
+    return filteredNearbyCandidates.map((n) => ({
       id: `cand-${n.externalId}`,
       name: n.name,
       slug: n.slug ?? `candidate-${n.externalId}`,
@@ -777,13 +881,21 @@ export function ExploreClient() {
       saveStatus: "want_to_go" as const,
       emoji: categoryEmoji(n.category),
       contributorCount: n.publicContributorCount,
+      policyStatus: (n.policyStatus ?? "unknown") as MarkerShellStatus,
     }));
-  }, [nearby]);
+  }, [filteredNearbyCandidates]);
 
   const layersOff = !showMine && !showCommunity;
   const sheetOpen = Boolean(
     nearby || composer || previewMine || selectedCandidate,
   );
+
+  const selectedMySave = useMemo(() => {
+    if (!selectedCandidate?.canonicalId) return null;
+    return (
+      mySaves.find((s) => s.placeId === selectedCandidate.canonicalId) ?? null
+    );
+  }, [selectedCandidate, mySaves]);
 
   const drawerContent = composer ? (
     <PlaceComposer
@@ -801,7 +913,23 @@ export function ExploreClient() {
       photosLoading={photosLoading}
       tips={tips}
       tipsLoading={tipsLoading}
-      myNote={selectedCandidate.alreadySavedByMe ? undefined : undefined}
+      tipsEnabled={tipsEnabled}
+      placeId={selectedCandidate.canonicalId}
+      placeLinks={placeLinks}
+      dogs={activeDogs}
+      pets={pets}
+      myEntry={
+        selectedMySave
+          ? {
+              status: selectedMySave.status,
+              visibility: selectedMySave.visibility,
+              note: selectedMySave.privateNotes,
+              dogBadges: selectedMySave.dogBadges,
+            }
+          : selectedCandidate.alreadySavedByMe
+            ? { status: selectedCandidate.mySaveStatus ?? "want_to_go" }
+            : null
+      }
       communityNotes={[]}
       busy={busy}
       onBack={() => {
@@ -809,17 +937,24 @@ export function ExploreClient() {
         setDetails(null);
         setPhotos([]);
         setTips([]);
+        setTipsEnabled(false);
+        setPlaceLinks([]);
       }}
       onClose={() => {
         setSelectedCandidate(null);
         setNearby(null);
+        setPlaceLinks([]);
       }}
       onSave={openComposerFromCandidate}
+      onEditEntry={openComposerFromCandidate}
     />
   ) : nearby ? (
     <NearbyPanel
       session={nearby}
+      candidates={filteredNearbyCandidates}
       loading={nearbyLoading}
+      dogFriendlyFilter={dogFriendlyFilter}
+      onDogFriendlyFilterChange={setDogFriendlyFilter}
       onSelect={(c) => void enrichCandidate(c)}
       onCustom={startCustomComposer}
       onRadius={(r) => void runNearby(nearby.lat, nearby.lng, r, nearby.label)}
@@ -943,7 +1078,7 @@ export function ExploreClient() {
                 : null
             }
             chooseLocationMode={chooseLocation}
-            paddingRight={isDesktop && sheetOpen ? 440 : 0}
+            paddingRight={isDesktop && sheetOpen ? 460 : 0}
             onMapClick={onMapClick}
             onTempPinChange={(pin) => {
               if (!nearby) return;
@@ -1023,7 +1158,7 @@ export function ExploreClient() {
           ) : null}
 
           {isDesktop && sheetOpen ? (
-            <aside className="absolute bottom-0 right-0 top-0 z-30 w-[min(100%,440px)] border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
+            <aside className="absolute bottom-0 right-0 top-0 z-30 w-[min(100%,460px)] border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
               {drawerContent}
             </aside>
           ) : null}
@@ -1139,7 +1274,10 @@ export function ExploreClient() {
 
 function NearbyPanel({
   session,
+  candidates,
   loading,
+  dogFriendlyFilter,
+  onDogFriendlyFilterChange,
   onSelect,
   onCustom,
   onRadius,
@@ -1147,13 +1285,19 @@ function NearbyPanel({
   onSearchArea,
 }: {
   session: NearbySession;
+  candidates: PlaceCandidate[];
   loading: boolean;
+  dogFriendlyFilter: DogFriendlyFilterMode;
+  onDogFriendlyFilterChange: (mode: DogFriendlyFilterMode) => void;
   onSelect: (c: PlaceCandidate) => void;
   onCustom: () => void;
   onRadius: (r: number) => void;
   onClose: () => void;
   onSearchArea: () => void;
 }) {
+  const hiddenByFilter =
+    session.candidates.length - candidates.length;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-start justify-between gap-2 px-4 pt-4">
@@ -1199,6 +1343,37 @@ function NearbyPanel({
         </button>
       </div>
 
+      <div
+        className="mt-3 flex gap-1 px-4"
+        role="group"
+        aria-label="Dog-friendly filter"
+      >
+        <button
+          type="button"
+          onClick={() => onDogFriendlyFilterChange("include_unknown")}
+          className={cn(
+            "min-h-10 flex-1 rounded-full px-3 text-xs font-semibold",
+            dogFriendlyFilter === "include_unknown"
+              ? "bg-[var(--color-brand-600)] text-white"
+              : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
+          )}
+        >
+          Include unknown places
+        </button>
+        <button
+          type="button"
+          onClick={() => onDogFriendlyFilterChange("known_only")}
+          className={cn(
+            "min-h-10 flex-1 rounded-full px-3 text-xs font-semibold",
+            dogFriendlyFilter === "known_only"
+              ? "bg-[var(--color-brand-600)] text-white"
+              : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
+          )}
+        >
+          Known dog-friendly only
+        </button>
+      </div>
+
       <div className="mt-3 flex-1 overflow-y-auto px-2 pb-4">
         {loading || session.status === "loading" ? (
           <div className="space-y-2 px-2">
@@ -1227,8 +1402,21 @@ function NearbyPanel({
               </p>
             ) : null}
           </div>
+        ) : candidates.length === 0 ? (
+          <div className="space-y-2 px-4 py-6 text-sm text-[var(--color-text-muted)]">
+            <p>
+              No places with Dogmarked dog-policy evidence in this area.
+              Switch to “Include unknown places” to see more.
+            </p>
+            {hiddenByFilter > 0 ? (
+              <p className="text-xs">
+                {hiddenByFilter} place{hiddenByFilter === 1 ? "" : "s"} hidden by
+                this filter.
+              </p>
+            ) : null}
+          </div>
         ) : (
-          session.candidates.map((place) => (
+          candidates.map((place) => (
             <button
               key={`${place.provider}-${place.externalId}`}
               type="button"

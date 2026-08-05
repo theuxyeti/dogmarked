@@ -86,6 +86,10 @@ export interface DogPolicy {
   lastVerifiedAt: string | null;
 }
 
+/**
+ * Compact pack member used by compatibility scoring.
+ * Prefer PetProfile for account/CRUD; map via pets.ts helpers.
+ */
 export interface DogProfile {
   id: string;
   userId?: string | null;
@@ -93,6 +97,37 @@ export interface DogProfile {
   weightKg: number;
   sizeClass: SizeClass;
   travelsInCarrier: boolean;
+}
+
+/**
+ * Full pet identity (Phase 6). Backed by public.dog_profiles.
+ * Storage weight is kg; weightLb is a display convenience when provided.
+ */
+export interface PetProfile {
+  id: string;
+  userId: string;
+  name: string;
+  photoPath?: string | null;
+  weightKg?: number | null;
+  /** Display convenience — derived from weightKg when mapping from DB */
+  weightLb?: number | null;
+  sizeClass: SizeClass;
+  /** Alias of sizeClass for plan-shaped clients ("small" | "medium" | "large" …) */
+  size?: SizeClass;
+  breed?: string | null;
+  travelsInCarrier: boolean;
+  notes?: string | null;
+  isActive: boolean;
+  publicDisplayEnabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Opt-in public fields only (name + avatar path). */
+export interface PublicPetIdentity {
+  id: string;
+  name: string;
+  photoPath?: string | null;
 }
 
 export interface PlaceWithPolicy extends Place {
@@ -111,3 +146,19 @@ export interface UserPlaceSave {
   visibility: SaveVisibility;
   privateNotes?: string | null;
 }
+
+/** Phase 8 structured trip/policy report (see `src/lib/policy/evidence.ts`). */
+export type {
+  PetPolicyReport,
+  PetPolicyOverallStatus,
+  PetPolicyReportVisibility,
+  PetPolicyEvidenceType,
+  PetPolicyAreas,
+  PetPolicyRules,
+  PetPolicyFee,
+  PolicyEvidence,
+  PlacePolicySummary,
+  PolicyConflict,
+} from "@/lib/policy/evidence";
+
+export type { PolicyChipDescriptor, PolicyChipCategory, PolicyChipTone } from "@/lib/policy/chips";
