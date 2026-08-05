@@ -84,7 +84,83 @@ export function renderedPoisToCandidates(
     });
   }
 
-  return out.sort(
-    (a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0),
-  ).slice(0, 15);
+  return out
+    .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0))
+    .slice(0, 15);
+}
+
+type MapTilerFeature = {
+  id?: string;
+  text?: string;
+  place_name?: string;
+  center?: [number, number];
+  place_type?: string[];
+  properties?: { category?: string };
+};
+
+/**
+ * Server-side MapTiler reverse geocode with `types=poi`.
+ * Used when Foursquare nearby fails so the drawer still has real places.
+ */
+export async function fetchMapTilerNearbyPois(input: {
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  limit?: number;
+  apiKey?: string;
+}): Promise<PlaceCandidate[]> {
+  const key = (input.apiKey ?? process.env.NEXT_PUBLIC_MAPTILER_KEY)?.trim();
+  if (!key) return [];
+
+  const limit = Math.min(15, Math.max(1, input.limit ?? 12));
+  const url = new URL(
+    `https://api.maptiler.com/geocoding/${input.lng},${input.lat}.json`,
+  );
+  url.searchParams.set("key", key);
+  url.searchParams.set("types", "poi");
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("language", "en");
+
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) return [];
+
+  const data = (await res.json()) as { features?: MapTilerFeature[] };
+  const center = { lat: input.lat, lng: input.lng };
+  const out: PlaceCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const f of data.features ?? []) {
+    if (!Array.isArray(f.center) || f.center.length < 2) continue;
+    const name = (f.text ?? f.place_name)?.trim();
+    if (!name || name.length < 2 || SKIP_NAME.test(name)) continue;
+    const lng = Number(f.center[0]);
+    const lat = Number(f.center[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const dist = haversineM(center, { lat, lng });
+    // Soft radius: MapTiler reverse can return slightly farther POIs; allow 1.5×.
+    if (dist > input.radiusMeters * 1.5) continue;
+
+    const externalId = String(f.id ?? `mt-${lng.toFixed(5)},${lat.toFixed(5)}`);
+    if (seen.has(externalId)) continue;
+    seen.add(externalId);
+
+    const sourceCategory =
+      f.properties?.category ?? f.place_type?.find((t) => t !== "poi") ?? "poi";
+    out.push({
+      provider: "maptiler",
+      externalId,
+      name,
+      latitude: lat,
+      longitude: lng,
+      distanceMeters: Math.round(dist),
+      category: mapOsmOrMapTilerCategory(sourceCategory),
+      sourceCategory,
+      formattedAddress: f.place_name,
+      attribution: "© MapTiler © OpenStreetMap contributors",
+    });
+  }
+
+  return out
+    .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0))
+    .slice(0, limit);
 }

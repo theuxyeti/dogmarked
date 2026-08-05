@@ -1,4 +1,5 @@
 import { logServerError } from "@/lib/api-errors";
+import { normalizeFoursquareApiKey } from "@/lib/discovery/fsq-key";
 
 export type DiscoveryEndpoint =
   | "nearby"
@@ -174,7 +175,7 @@ export async function getDiscoveryAvailability(): Promise<DiscoveryAvailability>
   if (!f.discoveryEnabled) {
     return { nearby: false, reason: "Discovery disabled by configuration." };
   }
-  if (!process.env.FOURSQUARE_API_KEY) {
+  if (!normalizeFoursquareApiKey(process.env.FOURSQUARE_API_KEY ?? "")) {
     return { nearby: false, reason: "FOURSQUARE_API_KEY is not configured." };
   }
   const usage = await readUsage();

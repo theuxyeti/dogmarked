@@ -88,6 +88,9 @@ export interface NearbyDiscoveryResponse {
   fallbackRecommended: boolean;
   radiusMeters: number;
   discoveryAvailable: boolean;
+  /** True when candidates came from MapTiler because Foursquare failed/empty. */
+  usedFallback?: boolean;
+  fallbackProvider?: "maptiler";
   /** Structured provider/config failure — absent on success (including empty results). */
   discoveryError?: {
     code: string;

@@ -47,6 +47,8 @@ export type MapViewApi = {
     lng: number,
     radiusMeters: number,
   ) => RenderedPoiQuery[];
+  /** Resolve after the next map idle (or timeout) so POI tiles are queryable. */
+  whenIdle: (timeoutMs?: number) => Promise<void>;
 };
 
 export interface MapViewProps {
@@ -76,10 +78,10 @@ export interface MapViewProps {
 
 const POI_LAYER_HINTS = [
   "poi",
-  "housenumber",
   "place_label",
   "airport_label",
   "transit",
+  "label",
 ];
 
 const RADIUS_SOURCE = "dm-search-radius";
@@ -302,6 +304,21 @@ export function MapView({
       return hits;
     };
 
+    const whenIdle = (timeoutMs = 1800) =>
+      new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const timer = window.setTimeout(done, timeoutMs);
+        map.once("idle", () => {
+          window.clearTimeout(timer);
+          done();
+        });
+      });
+
     map.on("load", () => {
       emitBounds();
       if (!map.getSource(RADIUS_SOURCE)) {
@@ -322,7 +339,7 @@ export function MapView({
           paint: { "line-color": "#EE7D59", "line-width": 2, "line-opacity": 0.7 },
         });
       }
-      onMapApiRef.current?.({ queryRenderedPoisAround });
+      onMapApiRef.current?.({ queryRenderedPoisAround, whenIdle });
     });
     map.on("moveend", emitBounds);
 

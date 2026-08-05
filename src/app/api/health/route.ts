@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeFoursquareApiKey } from "@/lib/discovery/fsq-key";
 import { isMapTilerConfigured, isSupabaseConfigured } from "@/lib/utils";
 
 export async function GET() {
@@ -23,7 +24,9 @@ export async function GET() {
     supabase: supabaseConfigured && supabaseReachable,
     supabaseConfigured,
     maptiler: isMapTilerConfigured(),
-    foursquareConfigured: Boolean(process.env.FOURSQUARE_API_KEY?.trim()),
+    foursquareConfigured: Boolean(
+      normalizeFoursquareApiKey(process.env.FOURSQUARE_API_KEY ?? ""),
+    ),
     fsqDiscoveryEnabled: process.env.FSQ_DISCOVERY_ENABLED !== "false",
   });
 }

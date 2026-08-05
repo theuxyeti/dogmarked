@@ -1,5 +1,6 @@
 import { mapFsqCategoryToMvp } from "@/lib/discovery/fsq-category-map";
 import { ProviderHttpError } from "@/lib/discovery/errors";
+import { normalizeFoursquareApiKey } from "@/lib/discovery/fsq-key";
 import type {
   NearbySearchInput,
   PlaceCandidate,
@@ -11,7 +12,11 @@ import type {
 import { MAX_NEARBY_RESULTS } from "@/lib/discovery/types";
 import { recordFsqUsage } from "@/lib/discovery/usage";
 
+export { normalizeFoursquareApiKey } from "@/lib/discovery/fsq-key";
+
 const API_BASE = "https://places-api.foursquare.com";
+/** Older Places API still used by some Service Keys from the developer console. */
+const LEGACY_API_BASE = "https://api.foursquare.com/v3";
 const API_VERSION = "2025-06-17";
 const ATTRIBUTION = "Place data © Foursquare";
 
@@ -52,6 +57,8 @@ type FsqPlace = {
   hours?: { display?: string; open_now?: boolean };
   description?: string;
 };
+
+type AuthMode = "bearer" | "raw";
 
 function placeId(p: FsqPlace): string | null {
   const id = p.fsq_place_id ?? p.fsq_id;
@@ -121,76 +128,137 @@ function extractResults(data: unknown): FsqPlace[] {
   return [];
 }
 
+function redactSnippet(bodyText: string): string {
+  return bodyText
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/"access_token"\s*:\s*"[^"]+"/gi, '"access_token":"[redacted]"');
+}
+
 /**
  * Foursquare Places API — server-only. Never import from Client Components.
  */
 export class FoursquarePlaceProvider {
   constructor(private readonly apiKey: string) {}
 
-  private headers(): HeadersInit {
-    return {
-      Authorization: `Bearer ${this.apiKey}`,
+  private headers(mode: AuthMode, includeVersion: boolean): HeadersInit {
+    const headers: Record<string, string> = {
+      Authorization: mode === "bearer" ? `Bearer ${this.apiKey}` : this.apiKey,
       Accept: "application/json",
-      "X-Places-Api-Version": API_VERSION,
     };
+    if (includeVersion) {
+      headers["X-Places-Api-Version"] = API_VERSION;
+    }
+    return headers;
   }
 
-  private async getJson<T>(
+  private async fetchOnce(
+    base: string,
     path: string,
     params: Record<string, string | number | undefined>,
-  ): Promise<T> {
-    const url = new URL(`${API_BASE}${path}`);
+    mode: AuthMode,
+    includeVersion: boolean,
+  ): Promise<{ ok: true; data: unknown } | { ok: false; error: ProviderHttpError }> {
+    const url = new URL(`${base}${path}`);
     for (const [k, v] of Object.entries(params)) {
       if (v != null && v !== "") url.searchParams.set(k, String(v));
     }
-    const started = Date.now();
     const res = await fetch(url.toString(), {
-      headers: this.headers(),
+      headers: this.headers(mode, includeVersion),
       cache: "no-store",
     });
     const bodyText = await res.text().catch(() => "");
     if (!res.ok) {
-      throw new ProviderHttpError({
-        status: res.status,
-        provider: "foursquare",
-        endpoint: path,
-        bodySnippet: bodyText.replace(/Bearer\s+\S+/gi, "Bearer [redacted]"),
-      });
+      return {
+        ok: false,
+        error: new ProviderHttpError({
+          status: res.status,
+          provider: "foursquare",
+          endpoint: path,
+          bodySnippet: redactSnippet(bodyText),
+        }),
+      };
     }
-    void started;
-    if (!bodyText) return {} as T;
+    if (!bodyText) return { ok: true, data: {} };
     try {
-      return JSON.parse(bodyText) as T;
+      return { ok: true, data: JSON.parse(bodyText) as unknown };
     } catch {
-      throw new ProviderHttpError({
+      return {
+        ok: false,
+        error: new ProviderHttpError({
+          status: 502,
+          provider: "foursquare",
+          endpoint: path,
+          bodySnippet: "Invalid JSON response",
+        }),
+      };
+    }
+  }
+
+  /**
+   * Places API (Bearer) → Places API (raw key) → legacy v3 Places.
+   * Some console keys still authenticate only on v3 or without the Bearer scheme.
+   */
+  private async getJson<T>(
+    path: string,
+    params: Record<string, string | number | undefined>,
+  ): Promise<T> {
+    const attempts: Array<{
+      base: string;
+      mode: AuthMode;
+      includeVersion: boolean;
+    }> = [
+      { base: API_BASE, mode: "bearer", includeVersion: true },
+      { base: API_BASE, mode: "raw", includeVersion: true },
+      { base: LEGACY_API_BASE, mode: "raw", includeVersion: false },
+      { base: LEGACY_API_BASE, mode: "bearer", includeVersion: false },
+    ];
+
+    let lastError: ProviderHttpError | null = null;
+    for (const attempt of attempts) {
+      const result = await this.fetchOnce(
+        attempt.base,
+        path,
+        params,
+        attempt.mode,
+        attempt.includeVersion,
+      );
+      if (result.ok) return result.data as T;
+
+      lastError = result.error;
+      const status = result.error.status;
+      // Only walk auth variants on unauthorized/forbidden; other errors abort.
+      if (status === 401 || status === 403) continue;
+      throw result.error;
+    }
+    throw (
+      lastError ??
+      new ProviderHttpError({
         status: 502,
         provider: "foursquare",
         endpoint: path,
-        bodySnippet: "Invalid JSON response",
-      });
-    }
+        bodySnippet: "No response from Foursquare",
+      })
+    );
   }
 
   async nearby(input: NearbySearchInput): Promise<PlaceCandidate[]> {
     const limit = Math.min(MAX_NEARBY_RESULTS, Math.max(1, input.limit || 15));
+    const baseParams = {
+      ll: `${input.latitude},${input.longitude}`,
+      radius: Math.round(input.radiusMeters),
+      limit,
+      sort: "DISTANCE" as const,
+    };
     let data: unknown;
     try {
       data = await this.getJson("/places/search", {
-        ll: `${input.latitude},${input.longitude}`,
-        radius: Math.round(input.radiusMeters),
-        limit,
-        sort: "DISTANCE",
+        ...baseParams,
         fields: NEARBY_FIELDS,
       });
     } catch (err) {
       // Retry once without fields (defaults to all Pro fields) if bad request
       if (err instanceof ProviderHttpError && err.status === 400) {
-        data = await this.getJson("/places/search", {
-          ll: `${input.latitude},${input.longitude}`,
-          radius: Math.round(input.radiusMeters),
-          limit,
-          sort: "DISTANCE",
-        });
+        data = await this.getJson("/places/search", baseParams);
       } else {
         throw err;
       }
@@ -211,14 +279,29 @@ export class FoursquarePlaceProvider {
     proximity?: { latitude: number; longitude: number },
     limit = 8,
   ): Promise<PlaceCandidate[]> {
-    const data = await this.getJson("/places/search", {
-      query: query.trim(),
-      ll: proximity ? `${proximity.latitude},${proximity.longitude}` : undefined,
-      radius: proximity ? 2000 : undefined,
-      limit,
-      sort: proximity ? "DISTANCE" : "RELEVANCE",
-      fields: NEARBY_FIELDS,
-    });
+    let data: unknown;
+    try {
+      data = await this.getJson("/places/search", {
+        query: query.trim(),
+        ll: proximity ? `${proximity.latitude},${proximity.longitude}` : undefined,
+        radius: proximity ? 2000 : undefined,
+        limit,
+        sort: proximity ? "DISTANCE" : "RELEVANCE",
+        fields: NEARBY_FIELDS,
+      });
+    } catch (err) {
+      if (err instanceof ProviderHttpError && err.status === 400) {
+        data = await this.getJson("/places/search", {
+          query: query.trim(),
+          ll: proximity ? `${proximity.latitude},${proximity.longitude}` : undefined,
+          radius: proximity ? 2000 : undefined,
+          limit,
+          sort: proximity ? "DISTANCE" : "RELEVANCE",
+        });
+      } else {
+        throw err;
+      }
+    }
     try {
       await recordFsqUsage("search");
     } catch {
@@ -417,7 +500,7 @@ export class FoursquarePlaceProvider {
 }
 
 export function getFoursquarePlaceProvider(): FoursquarePlaceProvider | null {
-  const key = process.env.FOURSQUARE_API_KEY?.trim();
+  const key = normalizeFoursquareApiKey(process.env.FOURSQUARE_API_KEY ?? "");
   if (!key) return null;
   return new FoursquarePlaceProvider(key);
 }

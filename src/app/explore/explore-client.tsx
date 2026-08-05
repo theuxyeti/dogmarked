@@ -299,13 +299,20 @@ export function ExploreClient() {
         }
 
         let candidates = json.candidates ?? [];
-        let usedFallback = false;
+        let usedFallback = Boolean(json.usedFallback);
         const providerFailed =
-          !res.ok ||
-          json.discoveryAvailable === false ||
-          Boolean(json.discoveryError);
+          (!res.ok && !usedFallback) ||
+          (json.discoveryAvailable === false && candidates.length === 0) ||
+          (Boolean(json.discoveryError) && candidates.length === 0 && !usedFallback);
 
         if (candidates.length === 0) {
+          // Wait for map idle so flyTo tiles/POI labels are queryable.
+          try {
+            await mapApiRef.current?.whenIdle?.(2000);
+          } catch {
+            /* ignore */
+          }
+          if (ac.signal.aborted) return;
           const fallback = applyMaptilerFallback(lat, lng, radiusMeters);
           if (fallback.length > 0) {
             candidates = fallback;
@@ -321,18 +328,20 @@ export function ExploreClient() {
             label: resolvedLabel,
             radiusMeters: json.radiusMeters ?? radiusMeters,
             candidates,
-            discoveryAvailable: !providerFailed || usedFallback,
+            discoveryAvailable: true,
             status: "success",
             usedFallback,
             errorCode: json.discoveryError?.code,
             message: usedFallback
-              ? "Showing places visible on the map while place discovery recovers."
+              ? json.discoveryError
+                ? `Showing map places while discovery recovers (${json.discoveryError.code}).`
+                : "Showing places from the map while place discovery recovers."
               : undefined,
           });
           return;
         }
 
-        if (providerFailed) {
+        if (providerFailed || json.discoveryError || !res.ok) {
           const code = json.discoveryError?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : undefined);
           setNearby({
             lat,
@@ -368,6 +377,11 @@ export function ExploreClient() {
         });
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
+        try {
+          await mapApiRef.current?.whenIdle?.(2000);
+        } catch {
+          /* ignore */
+        }
         const fallback = applyMaptilerFallback(lat, lng, radiusMeters);
         setNearby({
           lat,
@@ -375,12 +389,12 @@ export function ExploreClient() {
           label: title,
           radiusMeters,
           candidates: fallback,
-          discoveryAvailable: false,
+          discoveryAvailable: fallback.length > 0,
           status: fallback.length ? "success" : "failure",
           usedFallback: fallback.length > 0,
           message: fallback.length
-            ? "Showing places visible on the map while place discovery recovers."
-            : "We couldn’t reach place discovery right now. Try again or create a custom place.",
+            ? "Showing places from the map while place discovery recovers (UNKNOWN_PROVIDER_ERROR)."
+            : "We couldn’t reach place discovery right now. Try again or create a custom place. (UNKNOWN_PROVIDER_ERROR)",
           errorCode: "UNKNOWN_PROVIDER_ERROR",
         });
       } finally {
@@ -1204,10 +1218,11 @@ function NearbyPanel({
                 `No listed places were found within ${session.radiusMeters} m. Try a larger radius or create a custom place.`}
             </p>
             {session.errorCode &&
-            (process.env.NODE_ENV === "development" ||
-              session.status === "config") ? (
+            (session.status === "failure" ||
+              session.status === "config" ||
+              session.status === "auth") ? (
               <p className="font-mono text-xs text-[var(--color-text-muted)]">
-                Diagnostic: {session.errorCode}
+                Code: {session.errorCode}
               </p>
             ) : null}
           </div>

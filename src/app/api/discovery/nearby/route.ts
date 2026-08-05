@@ -8,17 +8,38 @@ import {
   userMessageForDiscoveryError,
   type DiscoveryError,
 } from "@/lib/discovery/errors";
+import { fetchMapTilerNearbyPois } from "@/lib/discovery/maptiler-fallback";
 import {
   clampRadiusMeters,
   DEFAULT_RADIUS_M,
   MAX_NEARBY_RESULTS,
   type NearbyDiscoveryResponse,
+  type PlaceCandidate,
 } from "@/lib/discovery/types";
 import {
   getDiscoveryAvailability,
   getEnrichmentAvailability,
 } from "@/lib/discovery/usage";
+import { normalizeFoursquareApiKey } from "@/lib/discovery/fsq-key";
 import { getDiscoveryProvider, getGeocodingProvider } from "@/lib/places/providers";
+
+async function mapTilerFallbackCandidates(input: {
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+  limit: number;
+}): Promise<PlaceCandidate[]> {
+  try {
+    return await fetchMapTilerNearbyPois({
+      lat: input.lat,
+      lng: input.lng,
+      radiusMeters: input.radiusMeters,
+      limit: input.limit,
+    });
+  } catch {
+    return [];
+  }
+}
 
 export async function GET(request: Request) {
   const auth = await requireDiscoveryUser();
@@ -79,7 +100,7 @@ export async function GET(request: Request) {
 
   if (!discovery.nearby) {
     const discoveryError: DiscoveryError = {
-      code: process.env.FOURSQUARE_API_KEY?.trim()
+      code: normalizeFoursquareApiKey(process.env.FOURSQUARE_API_KEY ?? "")
         ? "DISCOVERY_LIMIT_REACHED"
         : "PROVIDER_NOT_CONFIGURED",
       message: discovery.reason ?? "Nearby discovery unavailable.",
@@ -97,6 +118,30 @@ export async function GET(request: Request) {
       errorCode: discoveryError.code,
       errorSnippet: discovery.reason ?? null,
     });
+
+    const fallback = await mapTilerFallbackCandidates({
+      lat: coords.lat,
+      lng: coords.lng,
+      radiusMeters,
+      limit,
+    });
+    if (fallback.length > 0) {
+      const candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
+      return NextResponse.json({
+        candidates,
+        catalogCoverage: "uncovered",
+        fallbackRecommended: false,
+        radiusMeters,
+        discoveryAvailable: true,
+        usedFallback: true,
+        fallbackProvider: "maptiler",
+        discoveryError,
+        enrichment: enrichmentMeta,
+        label,
+        message: userMessageForDiscoveryError(discoveryError),
+      } satisfies NearbyDiscoveryResponse & { message: string });
+    }
+
     return NextResponse.json({
       candidates: [],
       catalogCoverage: "uncovered",
@@ -129,6 +174,32 @@ export async function GET(request: Request) {
       errorCode: discoveryError.code,
       errorSnippet: "missing FOURSQUARE_API_KEY",
     });
+
+    const fallback = await mapTilerFallbackCandidates({
+      lat: coords.lat,
+      lng: coords.lng,
+      radiusMeters,
+      limit,
+    });
+    if (fallback.length > 0) {
+      const candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
+      return NextResponse.json(
+        {
+          candidates,
+          catalogCoverage: "uncovered",
+          fallbackRecommended: false,
+          radiusMeters,
+          discoveryAvailable: true,
+          usedFallback: true,
+          fallbackProvider: "maptiler",
+          discoveryError,
+          enrichment: enrichmentMeta,
+          label,
+          message: userMessageForDiscoveryError(discoveryError),
+        } satisfies NearbyDiscoveryResponse & { message: string },
+      );
+    }
+
     return NextResponse.json(
       {
         candidates: [],
@@ -153,12 +224,27 @@ export async function GET(request: Request) {
       radiusMeters,
       limit,
     });
-    const candidates = await decorateCandidatesWithDogmarked(raw, auth.user.id);
+    let candidates = await decorateCandidatesWithDogmarked(raw, auth.user.id);
+    let usedFallback = false;
+
+    if (candidates.length === 0) {
+      const fallback = await mapTilerFallbackCandidates({
+        lat: coords.lat,
+        lng: coords.lng,
+        radiusMeters,
+        limit,
+      });
+      if (fallback.length > 0) {
+        candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
+        usedFallback = true;
+      }
+    }
+
     const durationMs = Date.now() - started;
 
     logDiscoveryEvent({
       endpoint: "/places/search",
-      provider: "foursquare",
+      provider: usedFallback ? "maptiler" : "foursquare",
       httpStatus: 200,
       durationMs,
       radiusMeters,
@@ -166,7 +252,7 @@ export async function GET(request: Request) {
       authenticated: true,
       budgetBlocked: false,
       errorCode: null,
-      errorSnippet: null,
+      errorSnippet: usedFallback ? "fsq_empty_maptiler_fallback" : null,
     });
 
     const body: NearbyDiscoveryResponse = {
@@ -175,6 +261,8 @@ export async function GET(request: Request) {
       fallbackRecommended: candidates.length === 0,
       radiusMeters,
       discoveryAvailable: true,
+      usedFallback: usedFallback || undefined,
+      fallbackProvider: usedFallback ? "maptiler" : undefined,
       enrichment: enrichmentMeta,
       label,
     };
@@ -201,6 +289,41 @@ export async function GET(request: Request) {
       errorCode: discoveryError.code,
       errorSnippet,
     });
+
+    const fallback = await mapTilerFallbackCandidates({
+      lat: coords.lat,
+      lng: coords.lng,
+      radiusMeters,
+      limit,
+    });
+    if (fallback.length > 0) {
+      const candidates = await decorateCandidatesWithDogmarked(fallback, auth.user.id);
+      logDiscoveryEvent({
+        endpoint: "/places/search",
+        provider: "maptiler",
+        httpStatus: 200,
+        durationMs: Date.now() - started,
+        radiusMeters,
+        resultCount: candidates.length,
+        authenticated: true,
+        budgetBlocked: false,
+        errorCode: discoveryError.code,
+        errorSnippet: "fsq_failed_maptiler_fallback",
+      });
+      return NextResponse.json({
+        candidates,
+        catalogCoverage: "uncovered",
+        fallbackRecommended: false,
+        radiusMeters,
+        discoveryAvailable: true,
+        usedFallback: true,
+        fallbackProvider: "maptiler",
+        discoveryError,
+        enrichment: enrichmentMeta,
+        label,
+        message: userMessageForDiscoveryError(discoveryError),
+      } satisfies NearbyDiscoveryResponse & { message: string });
+    }
 
     return NextResponse.json(
       {

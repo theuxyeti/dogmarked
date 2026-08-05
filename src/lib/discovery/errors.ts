@@ -80,19 +80,32 @@ export function discoveryErrorFromUnknown(err: unknown): DiscoveryError {
   };
 }
 
-/** User-facing copy; keep codes for admin/dev diagnostics. */
+/** User-facing copy; append stable codes so production UI stays actionable. */
 export function userMessageForDiscoveryError(error: DiscoveryError): string {
+  const withCode = (msg: string) => `${msg} (${error.code})`;
   switch (error.code) {
     case "PROVIDER_NOT_CONFIGURED":
-      return "Place discovery is not configured.";
+      return withCode("Place discovery is not configured.");
     case "DISCOVERY_LIMIT_REACHED":
-      return "Nearby search limit reached for this month. You can still use the map and create a custom place.";
+      return withCode(
+        "Nearby search limit reached for this month. You can still use the map and create a custom place.",
+      );
     case "AUTH_REQUIRED":
-      return "Sign in to discover nearby places.";
+      return withCode("Sign in to discover nearby places.");
     case "PROVIDER_UNAUTHORIZED":
-      return "We couldn’t reach place discovery right now. Try again or create a custom place.";
+      return withCode(
+        "Place discovery could not authenticate with the provider. Check FOURSQUARE_API_KEY (Places Service Key).",
+      );
+    case "PROVIDER_BAD_REQUEST":
+      return withCode("Place discovery rejected the search request.");
+    case "PROVIDER_RATE_LIMITED":
+      return withCode("Place discovery is rate limited. Try again shortly.");
+    case "PROVIDER_UNAVAILABLE":
+      return withCode(
+        "We couldn’t reach place discovery right now. Try again or create a custom place.",
+      );
     default:
-      return error.message;
+      return withCode(error.message);
   }
 }
 
