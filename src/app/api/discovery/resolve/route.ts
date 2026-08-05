@@ -43,18 +43,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const match = await provider.resolveCandidate(parsed.data);
+    // Cap wait so overloaded upstream cannot pin Edge invocations at ~20s+.
+    const match = await Promise.race([
+      provider.resolveCandidate(parsed.data),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), 8_000);
+      }),
+    ]);
     if (!match) return NextResponse.json({ candidate: null });
     const [decorated] = await decorateCandidatesWithDogmarked([match], auth.user.id);
     return NextResponse.json({ candidate: decorated ?? match });
   } catch (err) {
     logServerError("discovery.resolve", err);
-    return NextResponse.json(
-      {
-        candidate: null,
-        error: publicApiError(err instanceof Error ? err : null, "Could not resolve place."),
-      },
-      { status: 502 },
-    );
+    // Soft-fail: clients treat null as "keep lightweight candidate".
+    return NextResponse.json({
+      candidate: null,
+      error: publicApiError(err instanceof Error ? err : null, "Could not resolve place."),
+    });
   }
 }

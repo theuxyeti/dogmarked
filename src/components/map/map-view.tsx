@@ -1,18 +1,29 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import maplibregl, {
+  type LngLatBoundsLike,
   type Map as MapLibreMap,
   type MapLayerMouseEvent,
   type Marker,
+  type PaddingOptions,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import {
+  NEARBY_FIT_MAX_ZOOM,
+  NEARBY_FIT_MIN_ZOOM,
+  type CameraMode,
+} from "@/lib/map/camera";
 import {
   createClusterMarkerElement,
   createPolicyMarkerElement,
 } from "@/lib/map/create-marker-element";
 import type { MarkerShellStatus } from "@/lib/map/marker-policy";
 import type { PlaceWithPolicy } from "@/lib/types";
+
+const DEBUG_MAP =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_DEBUG_MAP === "1";
 
 export type MapPlace = PlaceWithPolicy & {
   saveLayer?: "mine" | "others" | "candidate" | "shared";
@@ -59,6 +70,12 @@ export type MapViewApi = {
   ) => RenderedPoiQuery[];
   /** Resolve after the next map idle (or timeout) so POI tiles are queryable. */
   whenIdle: (timeoutMs?: number) => Promise<void>;
+  fitNearby: (
+    points: Array<{ lat: number; lng: number }>,
+    padding?: PaddingOptions,
+  ) => void;
+  resize: () => void;
+  getCameraMode: () => CameraMode;
 };
 
 type FeatureHit = ReturnType<MapLibreMap["queryRenderedFeatures"]>;
@@ -70,9 +87,12 @@ export interface MapViewProps {
   initialCenter?: { lat: number; lng: number };
   initialZoom?: number;
   flyTo?: { lat: number; lng: number; zoom?: number } | null;
+  /** When true, skip automatic selectedSlug camera moves (locality/nearby owns camera). */
+  suppressAutoFocus?: boolean;
   tempPin?: TempPin | null;
   chooseLocationMode?: boolean;
   paddingRight?: number;
+  mapPadding?: PaddingOptions;
   onSelect?: (place: PlaceWithPolicy) => void;
   onMapClick?: (target: MapClickTarget) => void;
   onTempPinChange?: (pin: { lat: number; lng: number }) => void;
@@ -206,9 +226,11 @@ export function MapView({
   initialCenter,
   initialZoom,
   flyTo,
+  suppressAutoFocus = false,
   tempPin,
   chooseLocationMode,
   paddingRight = 0,
+  mapPadding,
   onSelect,
   onMapClick,
   onTempPinChange,
@@ -234,6 +256,26 @@ export function MapView({
   const selectedSlugRef = useRef(selectedSlug);
   const selectedCandidateIdRef = useRef(selectedCandidateId);
   const zoomRafRef = useRef<number | null>(null);
+  const cameraModeRef = useRef<CameraMode>("idle");
+  const constructCountRef = useRef(0);
+  const suppressAutoFocusRef = useRef(suppressAutoFocus);
+  const lastFlyToKeyRef = useRef<string | null>(null);
+  const lastPaddingKeyRef = useRef<string | null>(null);
+  const lastContainerSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boundsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressBoundsEmitRef = useRef(false);
+
+  const placesSignature = useMemo(
+    () =>
+      places
+        .map(
+          (p) =>
+            `${p.id}|${p.lat.toFixed(5)}|${p.lng.toFixed(5)}|${p.category}|${p.policyStatus ?? ""}|${p.saveLayer ?? ""}|${p.emoji ?? ""}|${p.contributorCount ?? 0}`,
+        )
+        .join(";"),
+    [places],
+  );
 
   useEffect(() => {
     onSelectRef.current = onSelect;
@@ -268,9 +310,20 @@ export function MapView({
   useEffect(() => {
     selectedCandidateIdRef.current = selectedCandidateId;
   }, [selectedCandidateId]);
+  useEffect(() => {
+    suppressAutoFocusRef.current = suppressAutoFocus;
+  }, [suppressAutoFocus]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
+    constructCountRef.current += 1;
+    if (DEBUG_MAP) {
+      console.info("[dogmarked/map] construct", constructCountRef.current, {
+        w: containerRef.current.clientWidth,
+        h: containerRef.current.clientHeight,
+      });
+    }
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -288,7 +341,19 @@ export function MapView({
       "top-right",
     );
 
-    const emitBounds = () => {
+    map.on("error", (e) => {
+      if (DEBUG_MAP) console.error("[dogmarked/map] error", e?.error ?? e);
+    });
+    map.on("dragstart", () => {
+      cameraModeRef.current = "user-controlled";
+    });
+    map.on("zoomstart", (e) => {
+      // Programmatic zoom sets originalEvent to undefined in MapLibre
+      if (e.originalEvent) cameraModeRef.current = "user-controlled";
+    });
+
+    const emitBoundsNow = () => {
+      if (suppressBoundsEmitRef.current) return;
       const b = map.getBounds();
       const c = map.getCenter();
       onBoundsRef.current?.({
@@ -302,6 +367,15 @@ export function MapView({
         lng: c.lng,
         zoom: map.getZoom(),
       });
+    };
+
+    /** Debounce so resize/padding easeTo cannot flood parent setState → fetch loops. */
+    const emitBounds = () => {
+      if (boundsTimerRef.current != null) clearTimeout(boundsTimerRef.current);
+      boundsTimerRef.current = setTimeout(() => {
+        boundsTimerRef.current = null;
+        emitBoundsNow();
+      }, 350);
     };
 
     const queryRenderedPoisAround = (
@@ -391,8 +465,37 @@ export function MapView({
         });
       });
 
+    const fitNearby = (
+      points: Array<{ lat: number; lng: number }>,
+      padding?: PaddingOptions,
+    ) => {
+      if (!points.length) return;
+      if (cameraModeRef.current === "user-controlled") return;
+      cameraModeRef.current = "nearby-fit";
+      if (points.length === 1) {
+        map.easeTo({
+          center: [points[0].lng, points[0].lat],
+          zoom: Math.min(NEARBY_FIT_MAX_ZOOM, Math.max(map.getZoom(), 14)),
+          padding: padding ?? { top: 48, right: 48, bottom: 48, left: 48 },
+          duration: 600,
+          essential: true,
+        });
+        return;
+      }
+      const bounds = new maplibregl.LngLatBounds();
+      for (const p of points) bounds.extend([p.lng, p.lat]);
+      map.fitBounds(bounds as LngLatBoundsLike, {
+        padding: padding ?? { top: 48, right: 48, bottom: 48, left: 48 },
+        maxZoom: NEARBY_FIT_MAX_ZOOM,
+        minZoom: NEARBY_FIT_MIN_ZOOM,
+        duration: 700,
+        essential: true,
+      });
+    };
+
     map.on("load", () => {
-      emitBounds();
+      if (DEBUG_MAP) console.info("[dogmarked/map] load");
+      emitBoundsNow();
       if (!map.getSource(RADIUS_SOURCE)) {
         map.addSource(RADIUS_SOURCE, {
           type: "geojson",
@@ -411,9 +514,44 @@ export function MapView({
           paint: { "line-color": "#EE7D59", "line-width": 2, "line-opacity": 0.7 },
         });
       }
-      onMapApiRef.current?.({ queryRenderedPoisAround, whenIdle });
+      onMapApiRef.current?.({
+        queryRenderedPoisAround,
+        whenIdle,
+        fitNearby,
+        resize: () => map.resize(),
+        getCameraMode: () => cameraModeRef.current,
+      });
     });
     map.on("moveend", emitBounds);
+
+    const ro = new ResizeObserver(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      const prev = lastContainerSizeRef.current;
+      if (prev && prev.w === w && prev.h === h) return;
+      lastContainerSizeRef.current = { w, h };
+      if (resizeTimerRef.current != null) clearTimeout(resizeTimerRef.current);
+      resizeTimerRef.current = setTimeout(() => {
+        resizeTimerRef.current = null;
+        // Padding easeTo already adjusts the camera; avoid resize↔moveend feedback.
+        if (suppressBoundsEmitRef.current) {
+          map.resize();
+          return;
+        }
+        suppressBoundsEmitRef.current = true;
+        map.resize();
+        window.setTimeout(() => {
+          suppressBoundsEmitRef.current = false;
+          emitBoundsNow();
+        }, 50);
+        if (DEBUG_MAP) {
+          console.info("[dogmarked/map] resize", { w, h });
+        }
+      }, 150);
+    });
+    ro.observe(containerRef.current);
 
     map.on("click", (e: MapLayerMouseEvent) => {
       if (chooseModeRef.current) {
@@ -456,6 +594,9 @@ export function MapView({
     mapRef.current = map;
 
     return () => {
+      ro.disconnect();
+      if (resizeTimerRef.current != null) clearTimeout(resizeTimerRef.current);
+      if (boundsTimerRef.current != null) clearTimeout(boundsTimerRef.current);
       onMapApiRef.current?.(null);
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
@@ -474,11 +615,22 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.easeTo({
-      padding: { top: 0, left: 0, bottom: 0, right: paddingRight },
-      duration: 250,
+    const padding =
+      mapPadding ??
+      ({ top: 0, left: 0, bottom: 0, right: paddingRight } satisfies PaddingOptions);
+    const key = `${padding.top ?? 0},${padding.right ?? 0},${padding.bottom ?? 0},${padding.left ?? 0}`;
+    if (lastPaddingKeyRef.current === key) return;
+    lastPaddingKeyRef.current = key;
+    suppressBoundsEmitRef.current = true;
+    map.easeTo({ padding, duration: 200 });
+    // One resize after drawer layout settles — do not let RO/easeTo re-enter.
+    requestAnimationFrame(() => {
+      map.resize();
+      window.setTimeout(() => {
+        suppressBoundsEmitRef.current = false;
+      }, 250);
     });
-  }, [paddingRight]);
+  }, [paddingRight, mapPadding]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -556,7 +708,8 @@ export function MapView({
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
     };
-  }, [places, selectedSlug, selectedCandidateId]);
+    // Depend on signature so parent array identity churn does not thrash markers.
+  }, [placesSignature, selectedSlug, selectedCandidateId]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -622,19 +775,38 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedSlug) return;
-    const place = places.find((p) => p.slug === selectedSlug);
+    if (!map || !selectedSlug || suppressAutoFocusRef.current) return;
+    if (cameraModeRef.current === "user-controlled") return;
+    if (
+      cameraModeRef.current === "locality-focus" ||
+      cameraModeRef.current === "nearby-fit"
+    ) {
+      return;
+    }
+    const place = placesRef.current.find((p) => p.slug === selectedSlug);
     if (!place) return;
-    map.easeTo({ center: [place.lng, place.lat], offset: [0, 40], duration: 500 });
-  }, [selectedSlug, places]);
+    cameraModeRef.current = "place-focus";
+    map.easeTo({
+      center: [place.lng, place.lat],
+      zoom: Math.min(17, Math.max(map.getZoom(), 15.5)),
+      offset: [0, 40],
+      duration: 500,
+      essential: true,
+    });
+  }, [selectedSlug, placesSignature]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !flyTo) return;
+    const key = `${flyTo.lat.toFixed(5)},${flyTo.lng.toFixed(5)},${flyTo.zoom ?? ""}`;
+    if (lastFlyToKeyRef.current === key) return;
+    lastFlyToKeyRef.current = key;
+    cameraModeRef.current = "locality-focus";
     map.flyTo({
       center: [flyTo.lng, flyTo.lat],
-      zoom: flyTo.zoom ?? Math.max(map.getZoom(), 14),
+      zoom: flyTo.zoom ?? Math.max(map.getZoom(), 13.5),
       essential: true,
+      duration: 900,
     });
   }, [flyTo]);
 

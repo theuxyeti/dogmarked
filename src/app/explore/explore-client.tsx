@@ -30,6 +30,11 @@ import {
   type PlaceTip,
 } from "@/lib/discovery/types";
 import {
+  exploreMapPadding,
+  localityZoom,
+  placeFocusZoom,
+} from "@/lib/map/camera";
+import {
   passesDogFriendlyFilter,
   resolveMarkerPolicyStatus,
   type DogFriendlyFilterMode,
@@ -57,10 +62,16 @@ const MapView = dynamic(
   () => import("@/components/map/map-view").then((m) => m.MapView),
   {
     ssr: false,
+    // Streets-like fallback only for the first client chunk load — never a cream blank.
     loading: () => (
-      <div className="flex h-full items-center justify-center bg-[var(--color-surface-muted)] text-sm text-[var(--color-text-muted)]">
-        Loading map…
-      </div>
+      <div
+        className="h-full w-full"
+        style={{
+          background:
+            "linear-gradient(180deg, #dce8e4 0%, #c5d5cf 45%, #b7c9c2 100%)",
+        }}
+        aria-label="Loading map"
+      />
     ),
   },
 );
@@ -127,6 +138,7 @@ export function ExploreClient() {
   const showCommunity =
     searchParams.get("community") === "1" ||
     searchParams.get("overlay") === "others";
+  const showDiscover = searchParams.get("discover") !== "0";
   const urlQuery = searchParams.get("q") ?? "";
 
   const [view, setView] = useState<"map" | "list">("map");
@@ -179,7 +191,46 @@ export function ExploreClient() {
 
   const abortRef = useRef<AbortController | null>(null);
   const enrichAbortRef = useRef<AbortController | null>(null);
+  const publicSavesAbortRef = useRef<AbortController | null>(null);
+  const lastPublicSavesQsRef = useRef<string | null>(null);
+  const bboxDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapApiRef = useRef<MapViewApi | null>(null);
+  /** After a destination is chosen, ignore the next urlQuery-driven autocomplete fetch. */
+  const suppressAutocompleteRef = useRef(false);
+
+  const onBoundsChange = useCallback(
+    (next: {
+      minLng: number;
+      minLat: number;
+      maxLng: number;
+      maxLat: number;
+    }) => {
+      // Debounce camera settle — never setBbox on every moveend pixel.
+      if (bboxDebounceRef.current != null) clearTimeout(bboxDebounceRef.current);
+      bboxDebounceRef.current = setTimeout(() => {
+        bboxDebounceRef.current = null;
+        setBbox((prev) => {
+          if (
+            prev &&
+            prev.minLng === next.minLng &&
+            prev.minLat === next.minLat &&
+            prev.maxLng === next.maxLng &&
+            prev.maxLat === next.maxLat
+          ) {
+            return prev;
+          }
+          return next;
+        });
+      }, 400);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (bboxDebounceRef.current != null) clearTimeout(bboxDebounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1280px)");
@@ -273,34 +324,94 @@ export function ExploreClient() {
   }, [loadMySaves]);
 
   useEffect(() => {
-    if (!showCommunity || !bbox) {
+    if (!showCommunity) {
+      publicSavesAbortRef.current?.abort();
+      lastPublicSavesQsRef.current = null;
       setPublicPins([]);
       return;
     }
+    if (!bbox) {
+      setPublicPins([]);
+      return;
+    }
+    // Round to ~11m so sub-pixel camera jitter does not mint unique URLs.
+    const round = (n: number) => n.toFixed(4);
     const qs = new URLSearchParams({
-      minLng: String(bbox.minLng),
-      minLat: String(bbox.minLat),
-      maxLng: String(bbox.maxLng),
-      maxLat: String(bbox.maxLat),
-    });
-    void fetch(`/api/saves/public?${qs}`)
+      minLng: round(bbox.minLng),
+      minLat: round(bbox.minLat),
+      maxLng: round(bbox.maxLng),
+      maxLat: round(bbox.maxLat),
+    }).toString();
+    if (lastPublicSavesQsRef.current === qs) return;
+
+    publicSavesAbortRef.current?.abort();
+    const ac = new AbortController();
+    publicSavesAbortRef.current = ac;
+
+    void fetch(`/api/saves/public?${qs}`, { signal: ac.signal })
       .then((r) => r.json())
-      .then((j: { pins?: PublicPin[] }) => setPublicPins(j.pins ?? []))
-      .catch(() => setPublicPins([]));
+      .then((j: { pins?: PublicPin[] }) => {
+        if (ac.signal.aborted) return;
+        lastPublicSavesQsRef.current = qs;
+        setPublicPins(j.pins ?? []);
+      })
+      .catch((err) => {
+        if ((err as Error).name === "AbortError") return;
+        if (!ac.signal.aborted) setPublicPins([]);
+      });
+
+    return () => {
+      ac.abort();
+    };
   }, [showCommunity, bbox]);
 
   useEffect(() => {
-    if (urlQuery.trim().length < 3) {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSearchHits([]);
+    }
+    function onPointer(e: MouseEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('[aria-label="Search suggestions"]')) return;
+      if (t?.closest?.('form') && t.closest("header")) return;
+      // Outside clicks close suggestions without clearing the committed query.
+      if (searchHits.length) setSearchHits([]);
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [searchHits.length]);
+
+  useEffect(() => {
+    if (suppressAutocompleteRef.current) {
+      suppressAutocompleteRef.current = false;
       setSearchHits([]);
       return;
     }
+    const q = urlQuery.trim();
+    if (q.length < 2) {
+      setSearchHits([]);
+      return;
+    }
+    const ac = new AbortController();
     const t = setTimeout(() => {
-      void fetch(`/api/places/search?q=${encodeURIComponent(urlQuery)}`)
+      void fetch(`/api/places/search?q=${encodeURIComponent(q)}`, {
+        signal: ac.signal,
+      })
         .then((r) => r.json())
-        .then((j: { results?: ExternalPlace[] }) => setSearchHits(j.results ?? []))
-        .catch(() => setSearchHits([]));
-    }, 280);
-    return () => clearTimeout(t);
+        .then((j: { results?: ExternalPlace[] }) => {
+          if (!ac.signal.aborted) setSearchHits(j.results ?? []);
+        })
+        .catch(() => {
+          if (!ac.signal.aborted) setSearchHits([]);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
   }, [urlQuery]);
 
   const applyMaptilerFallback = useCallback(
@@ -314,7 +425,13 @@ export function ExploreClient() {
   );
 
   const runNearby = useCallback(
-    async (lat: number, lng: number, radiusMeters: number, label?: string) => {
+    async (
+      lat: number,
+      lng: number,
+      radiusMeters: number,
+      label?: string,
+      opts?: { resultKind?: string | null; zoom?: number },
+    ) => {
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
@@ -327,17 +444,22 @@ export function ExploreClient() {
       setPreviewMine(null);
       setNearbyLoading(true);
       const title = label?.trim() || "this place";
-      setNearby({
+      // Keep prior candidates visible until replacement arrives — never blank the map.
+      setNearby((prev) => ({
         lat,
         lng,
         label: title,
         radiusMeters,
-        candidates: [],
+        candidates: prev?.candidates ?? [],
         discoveryAvailable: true,
         status: "loading",
         message: `Finding places around ${title}…`,
+      }));
+      setFlyTo({
+        lat,
+        lng,
+        zoom: opts?.zoom ?? localityZoom(opts?.resultKind),
       });
-      setFlyTo({ lat, lng, zoom: 16 });
 
       try {
         const qs = new URLSearchParams({
@@ -397,6 +519,16 @@ export function ExploreClient() {
                 ? `Showing map places while discovery recovers (${json.discoveryError.code}).`
                 : "Showing places from the map while place discovery recovers."
               : undefined,
+          });
+          const pad = exploreMapPadding({
+            drawerOpen: true,
+            isDesktop: typeof window !== "undefined" && window.innerWidth >= 1280,
+          });
+          requestAnimationFrame(() => {
+            mapApiRef.current?.fitNearby(
+              [{ lat, lng }, ...candidates.map((c) => ({ lat: c.latitude, lng: c.longitude }))],
+              pad,
+            );
           });
           return;
         }
@@ -505,10 +637,14 @@ export function ExploreClient() {
             }),
             signal: ac.signal,
           });
-          const json = (await res.json()) as { candidate?: PlaceCandidate | null };
-          if (json.candidate) {
-            candidate = json.candidate;
-            setSelectedCandidate(candidate);
+          if (!res.ok) {
+            /* soft-fail: keep MapTiler candidate */
+          } else {
+            const json = (await res.json()) as { candidate?: PlaceCandidate | null };
+            if (json.candidate) {
+              candidate = json.candidate;
+              setSelectedCandidate(candidate);
+            }
           }
         } catch {
           /* save without enrichment */
@@ -885,9 +1021,24 @@ export function ExploreClient() {
     }));
   }, [filteredNearbyCandidates]);
 
-  const layersOff = !showMine && !showCommunity;
+  const allMapPlaces = useMemo(
+    () => [...mapPlaces, ...(showDiscover ? candidatePlaces : [])],
+    [mapPlaces, candidatePlaces, showDiscover],
+  );
+
+  const layersOff = !showMine && !showCommunity && !showDiscover;
   const sheetOpen = Boolean(
     nearby || composer || previewMine || selectedCandidate,
+  );
+  const cameraPadding = useMemo(
+    () =>
+      exploreMapPadding({
+        drawerOpen: sheetOpen,
+        isDesktop,
+        drawerWidth: 460,
+        headerHeight: 64,
+      }),
+    [sheetOpen, isDesktop],
   );
 
   const selectedMySave = useMemo(() => {
@@ -1059,111 +1210,138 @@ export function ExploreClient() {
         <Plus className="h-5 w-5" /> Add a place
       </button>
 
-      {view === "map" ? (
-        <div className="relative min-h-0 flex-1">
-          <MapView
-            places={[...mapPlaces, ...candidatePlaces] as never}
-            selectedSlug={previewMine?.slug ?? null}
-            selectedCandidateId={
-              selectedCandidate ? `cand-${selectedCandidate.externalId}` : null
-            }
-            flyTo={flyTo}
-            tempPin={
-              nearby
-                ? {
-                    lat: nearby.lat,
-                    lng: nearby.lng,
-                    radiusMeters: nearby.radiusMeters,
+      {/* Keep MapLibre mounted across Map/List toggles — never remount into a blank canvas. */}
+      <div
+        className={cn(
+          "relative min-h-0 flex-1",
+          view !== "map" && "pointer-events-none invisible absolute inset-0",
+        )}
+        aria-hidden={view !== "map"}
+      >
+        <MapView
+          places={allMapPlaces as never}
+          selectedSlug={previewMine?.slug ?? null}
+          selectedCandidateId={
+            selectedCandidate ? `cand-${selectedCandidate.externalId}` : null
+          }
+          flyTo={flyTo}
+          suppressAutoFocus={Boolean(nearby) && !selectedCandidate}
+          tempPin={
+            nearby
+              ? {
+                  lat: nearby.lat,
+                  lng: nearby.lng,
+                  radiusMeters: nearby.radiusMeters,
+                }
+              : null
+          }
+          chooseLocationMode={chooseLocation}
+          paddingRight={isDesktop && sheetOpen ? 460 : 0}
+          mapPadding={cameraPadding}
+          onMapClick={onMapClick}
+          onTempPinChange={(pin) => {
+            if (!nearby) return;
+            setNearby({ ...nearby, lat: pin.lat, lng: pin.lng });
+          }}
+          onTempPinDragEnd={(pin) => {
+            void runNearby(
+              pin.lat,
+              pin.lng,
+              nearby?.radiusMeters ?? DEFAULT_RADIUS_M,
+              nearby?.label,
+            );
+          }}
+          onBoundsChange={onBoundsChange}
+          onMapApi={(api) => {
+            mapApiRef.current = api;
+          }}
+          className="h-full w-full"
+        />
+
+        {layersOff ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">
+            <p className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-center text-sm text-[var(--color-text-muted)] shadow">
+              Open Layers to show My places, Community, or nearby discovery.
+            </p>
+          </div>
+        ) : null}
+
+        {view === "map" && searchHits.length > 0 ? (
+          <div
+            className="absolute left-3 top-16 z-20 max-h-64 w-[min(100%-1.5rem,22rem)] overflow-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg"
+            role="listbox"
+            aria-label="Search suggestions"
+          >
+            {searchHits.map((hit) => (
+              <button
+                key={`${hit.provider}-${hit.externalId}`}
+                type="button"
+                role="option"
+                className="block w-full border-b border-[var(--color-border)] px-4 py-3 text-left last:border-0 hover:bg-[var(--color-surface-muted)]"
+                onClick={() => {
+                  suppressAutocompleteRef.current = true;
+                  setSearchHits([]);
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.set("q", hit.name);
+                  router.replace(`/explore?${params.toString()}`);
+                  if (isLocalityLike(hit) || hit.resultKind === "address") {
+                    void runNearby(
+                      hit.lat,
+                      hit.lng,
+                      DEFAULT_RADIUS_M,
+                      hit.name,
+                      { resultKind: hit.resultKind },
+                    );
+                  } else {
+                    const candidate: PlaceCandidate = {
+                      provider: "maptiler",
+                      externalId: hit.externalId,
+                      name: hit.name,
+                      latitude: hit.lat,
+                      longitude: hit.lng,
+                      category: dbToCategory(hit.category),
+                      formattedAddress: hit.formattedAddress,
+                      countryCode: hit.countryCode,
+                      attribution: hit.attribution,
+                    };
+                    setNearby({
+                      lat: hit.lat,
+                      lng: hit.lng,
+                      label: hit.name,
+                      radiusMeters: DEFAULT_RADIUS_M,
+                      candidates: [candidate],
+                      discoveryAvailable: true,
+                      status: "success",
+                    });
+                    setFlyTo({
+                      lat: hit.lat,
+                      lng: hit.lng,
+                      zoom: placeFocusZoom(),
+                    });
+                    void enrichCandidate(candidate);
                   }
-                : null
-            }
-            chooseLocationMode={chooseLocation}
-            paddingRight={isDesktop && sheetOpen ? 460 : 0}
-            onMapClick={onMapClick}
-            onTempPinChange={(pin) => {
-              if (!nearby) return;
-              setNearby({ ...nearby, lat: pin.lat, lng: pin.lng });
-            }}
-            onTempPinDragEnd={(pin) => {
-              void runNearby(
-                pin.lat,
-                pin.lng,
-                nearby?.radiusMeters ?? DEFAULT_RADIUS_M,
-                nearby?.label,
-              );
-            }}
-            onBoundsChange={setBbox}
-            onMapApi={(api) => {
-              mapApiRef.current = api;
-            }}
-            className="h-full w-full"
-          />
+                }}
+              >
+                <p className="text-sm font-semibold text-[var(--color-ink)]">
+                  {hit.name}
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {hit.resultKind}
+                  {hit.formattedAddress ? ` · ${hit.formattedAddress}` : ""}
+                </p>
+              </button>
+            ))}
+          </div>
+        ) : null}
 
-          {layersOff ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">
-              <p className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-center text-sm text-[var(--color-text-muted)] shadow">
-                Turn on My places or Community to see saved pins on the map.
-              </p>
-            </div>
-          ) : null}
+        {view === "map" && isDesktop && sheetOpen ? (
+          <aside className="absolute bottom-0 right-0 top-0 z-30 w-[min(100%,460px)] border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
+            {drawerContent}
+          </aside>
+        ) : null}
+      </div>
 
-          {searchHits.length > 0 ? (
-            <div className="absolute left-3 top-16 z-20 max-h-64 w-[min(100%-1.5rem,22rem)] overflow-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
-              {searchHits.map((hit) => (
-                <button
-                  key={`${hit.provider}-${hit.externalId}`}
-                  type="button"
-                  className="block w-full border-b border-[var(--color-border)] px-4 py-3 text-left last:border-0 hover:bg-[var(--color-surface-muted)]"
-                  onClick={() => {
-                    setSearchHits([]);
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set("q", hit.name);
-                    router.replace(`/explore?${params.toString()}`);
-                    if (isLocalityLike(hit) || hit.resultKind === "address") {
-                      void runNearby(hit.lat, hit.lng, DEFAULT_RADIUS_M, hit.name);
-                    } else {
-                      const candidate: PlaceCandidate = {
-                        provider: "maptiler",
-                        externalId: hit.externalId,
-                        name: hit.name,
-                        latitude: hit.lat,
-                        longitude: hit.lng,
-                        category: dbToCategory(hit.category),
-                        formattedAddress: hit.formattedAddress,
-                        countryCode: hit.countryCode,
-                        attribution: hit.attribution,
-                      };
-                      setNearby({
-                        lat: hit.lat,
-                        lng: hit.lng,
-                        label: hit.name,
-                        radiusMeters: DEFAULT_RADIUS_M,
-                        candidates: [candidate],
-                        discoveryAvailable: true,
-                        status: "success",
-                      });
-                      setFlyTo({ lat: hit.lat, lng: hit.lng, zoom: 16 });
-                      void enrichCandidate(candidate);
-                    }
-                  }}
-                >
-                  <p className="text-sm font-semibold text-[var(--color-ink)]">{hit.name}</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">
-                    {hit.resultKind}
-                    {hit.formattedAddress ? ` · ${hit.formattedAddress}` : ""}
-                  </p>
-                </button>
-              ))}
-            </div>
-          ) : null}
-
-          {isDesktop && sheetOpen ? (
-            <aside className="absolute bottom-0 right-0 top-0 z-30 w-[min(100%,460px)] border-l border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
-              {drawerContent}
-            </aside>
-          ) : null}
-        </div>
-      ) : (
+      {view === "list" ? (
         <div className="flex-1 overflow-y-auto bg-[var(--color-canvas)] px-4 pb-28 pt-16">
           <div className="mx-auto max-w-lg space-y-3">
             <div className="flex gap-2">
@@ -1245,7 +1423,7 @@ export function ExploreClient() {
             )}
           </div>
         </div>
-      )}
+      ) : null}
 
       {!isDesktop ? (
         <Sheet
@@ -1343,35 +1521,25 @@ function NearbyPanel({
         </button>
       </div>
 
-      <div
-        className="mt-3 flex gap-1 px-4"
-        role="group"
-        aria-label="Dog-friendly filter"
-      >
-        <button
-          type="button"
-          onClick={() => onDogFriendlyFilterChange("include_unknown")}
-          className={cn(
-            "min-h-10 flex-1 rounded-full px-3 text-xs font-semibold",
-            dogFriendlyFilter === "include_unknown"
-              ? "bg-[var(--color-brand-600)] text-white"
-              : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
-          )}
-        >
-          Include unknown places
-        </button>
-        <button
-          type="button"
-          onClick={() => onDogFriendlyFilterChange("known_only")}
-          className={cn(
-            "min-h-10 flex-1 rounded-full px-3 text-xs font-semibold",
-            dogFriendlyFilter === "known_only"
-              ? "bg-[var(--color-brand-600)] text-white"
-              : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
-          )}
-        >
+      <div className="mt-2 flex items-center justify-between gap-2 px-4">
+        <label className="flex min-h-10 cursor-pointer items-center gap-2 text-xs font-medium text-[var(--color-ink-muted)]">
+          <input
+            type="checkbox"
+            checked={dogFriendlyFilter === "known_only"}
+            onChange={(e) =>
+              onDogFriendlyFilterChange(
+                e.target.checked ? "known_only" : "include_unknown",
+              )
+            }
+            className="h-4 w-4 accent-[var(--color-brand)]"
+          />
           Known dog-friendly only
-        </button>
+        </label>
+        {hiddenByFilter > 0 ? (
+          <span className="text-xs text-[var(--color-ink-muted)]">
+            {hiddenByFilter} hidden
+          </span>
+        ) : null}
       </div>
 
       <div className="mt-3 flex-1 overflow-y-auto px-2 pb-4">
