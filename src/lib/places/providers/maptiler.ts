@@ -1,6 +1,7 @@
 import type {
   CoordinateInput,
   ExternalPlace,
+  GeocodeResultKind,
   NearbyPlaceInput,
   PlaceProvider,
   PlaceSearchInput,
@@ -27,22 +28,27 @@ function countryFromFeature(f: MapTilerFeature): string {
   return code && code.length === 2 ? code : "US";
 }
 
-function kindFromFeature(f: MapTilerFeature): "place" | "destination" {
+function resultKindFromFeature(f: MapTilerFeature): GeocodeResultKind {
   const types = f.place_type ?? [];
-  if (
-    types.some((t) =>
-      ["country", "region", "place", "locality", "district", "municipality"].includes(t),
-    ) &&
-    !types.some((t) => ["poi", "address"].includes(t))
-  ) {
-    return "destination";
+  if (types.includes("poi")) return "poi";
+  if (types.includes("address")) return "address";
+  if (types.some((t) => ["country", "region", "district"].includes(t))) return "region";
+  if (types.some((t) => ["place", "locality", "municipality", "neighborhood"].includes(t))) {
+    return "locality";
   }
-  return "place";
+  if (f.properties?.category) return "poi";
+  return "unknown";
+}
+
+function kindFromFeature(f: MapTilerFeature): "place" | "destination" {
+  const rk = resultKindFromFeature(f);
+  return rk === "locality" || rk === "region" ? "destination" : "place";
 }
 
 function toExternal(f: MapTilerFeature): ExternalPlace | null {
   if (!Array.isArray(f.center) || f.center.length < 2) return null;
   const name = f.text ?? f.place_name ?? "Unknown";
+  const resultKind = resultKindFromFeature(f);
   return {
     provider: "maptiler",
     externalId: String(f.id ?? `${f.center[0]},${f.center[1]}`),
@@ -53,6 +59,7 @@ function toExternal(f: MapTilerFeature): ExternalPlace | null {
     formattedAddress: f.place_name ?? name,
     category: f.properties?.category ?? f.place_type?.[0] ?? null,
     kind: kindFromFeature(f),
+    resultKind,
     attribution: "© MapTiler © OpenStreetMap contributors",
     normalized: {
       name,
@@ -61,6 +68,7 @@ function toExternal(f: MapTilerFeature): ExternalPlace | null {
       country_code: countryFromFeature(f),
       formatted_address: f.place_name ?? name,
       category: f.properties?.category ?? null,
+      result_kind: resultKind,
     },
   };
 }

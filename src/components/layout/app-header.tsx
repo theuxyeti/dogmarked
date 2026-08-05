@@ -7,30 +7,42 @@ import { UserAvatarMenu } from "@/components/layout/user-avatar-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-type OverlayMode = "mine" | "others";
-
 /**
- * Compact MVP header: wordmark, search, My places / Other people, avatar.
- * No Community / equal-weight nav destinations.
+ * Compact MVP header: wordmark, search, independent My places / Community toggles, avatar.
  */
 export function AppHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
-  const overlay = (searchParams.get("overlay") as OverlayMode) || "mine";
+  const showMine = searchParams.get("mine") !== "0";
+  const showCommunity = searchParams.get("community") === "1";
 
   useEffect(() => {
     const q = searchParams.get("q") ?? "";
     setQuery(q);
   }, [searchParams]);
 
-  function setOverlay(mode: OverlayMode) {
+  function patchLayers(next: { mine?: boolean; community?: boolean }) {
     const params = new URLSearchParams(searchParams.toString());
-    if (mode === "mine") params.delete("overlay");
-    else params.set("overlay", mode);
+    const mine = next.mine ?? showMine;
+    const community = next.community ?? showCommunity;
+    if (mine) params.delete("mine");
+    else params.set("mine", "0");
+    if (community) params.set("community", "1");
+    else params.delete("community");
+    // Drop legacy mutually-exclusive overlay param
+    params.delete("overlay");
     const qs = params.toString();
     router.push(`${pathname}${qs ? `?${qs}` : ""}`);
+
+    void fetch("/api/map-preferences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showMyPlaces: mine, showCommunity: community }),
+    }).catch(() => {
+      /* local URL is source of truth for guests */
+    });
   }
 
   function onSearchSubmit(e: FormEvent) {
@@ -62,13 +74,14 @@ export function AppHeader() {
           />
         </form>
 
-        <div className="hidden items-center rounded-full border border-[var(--color-border)] bg-white p-0.5 text-xs font-semibold sm:flex">
+        <div className="hidden items-center gap-1 rounded-full border border-[var(--color-border)] bg-white p-0.5 text-xs font-semibold sm:flex">
           <button
             type="button"
-            onClick={() => setOverlay("mine")}
+            aria-pressed={showMine}
+            onClick={() => patchLayers({ mine: !showMine })}
             className={cn(
               "rounded-full px-3 py-2 transition-colors duration-150",
-              overlay !== "others"
+              showMine
                 ? "bg-[var(--color-brand-600)] text-white"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-ink)]",
             )}
@@ -77,29 +90,30 @@ export function AppHeader() {
           </button>
           <button
             type="button"
-            onClick={() => setOverlay("others")}
+            aria-pressed={showCommunity}
+            onClick={() => patchLayers({ community: !showCommunity })}
             className={cn(
               "rounded-full px-3 py-2 transition-colors duration-150",
-              overlay === "others"
+              showCommunity
                 ? "bg-[var(--color-brand-600)] text-white"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-ink)]",
             )}
           >
-            Other people
+            Community
           </button>
         </div>
 
         <UserAvatarMenu />
       </header>
 
-      {/* Mobile overlay toggle under search */}
       <div className="flex items-center justify-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 sm:hidden">
         <button
           type="button"
-          onClick={() => setOverlay("mine")}
+          aria-pressed={showMine}
+          onClick={() => patchLayers({ mine: !showMine })}
           className={cn(
             "min-h-10 flex-1 rounded-full text-sm font-semibold",
-            overlay !== "others"
+            showMine
               ? "bg-[var(--color-brand-600)] text-white"
               : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
           )}
@@ -108,15 +122,16 @@ export function AppHeader() {
         </button>
         <button
           type="button"
-          onClick={() => setOverlay("others")}
+          aria-pressed={showCommunity}
+          onClick={() => patchLayers({ community: !showCommunity })}
           className={cn(
             "min-h-10 flex-1 rounded-full text-sm font-semibold",
-            overlay === "others"
+            showCommunity
               ? "bg-[var(--color-brand-600)] text-white"
               : "bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
           )}
         >
-          Other people
+          Community
         </button>
       </div>
     </>

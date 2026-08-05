@@ -29,8 +29,9 @@ YYYYMMDDHHMMSS_NNN_short_snake_description.sql
 | 011 | `20260304121100_011_place_claims.sql` | Business claim stub + review RPC | ✅ |
 | 012 | `20260304121200_012_profile_rls_external_refs.sql` | Profile ensure trigger, contribution RLS harden, `external_place_refs` | ✅ |
 | 013 | `20260304121300_013_hale_patisserie_seed.sql` | Hale Pâtisserie Coral Gables identity place | ✅ |
-| 014 | `20260304121400_014_mvp_save_badges.sql` | MVP dog_badges, been_there, public overlay RPC | ⬜ apply |
+| 014 | `20260304121400_014_mvp_save_badges.sql` | MVP dog_badges, been_there, public overlay RPC | ✅ |
+| 015 | `20260304121500_015_discovery_cache_usage.sql` | place_provider_cache, external_api_usage, map layer prefs | ✅ |
 
-**Next file to add:** `YYYYMMDDHHMMSS_015_<description>.sql`
+**Next file to add:** `YYYYMMDDHHMMSS_016_<description>.sql`
 
 When you apply a migration on hosted Supabase, check it off in this table (and in `tasks.md`).

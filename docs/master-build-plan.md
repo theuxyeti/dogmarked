@@ -380,20 +380,32 @@ Make Explore feel like a polished, location-driven travel product (map primary).
 
 **Phase 9 done when:** map feels populated via basemap POIs (not only seed pins); neutral ≠ dog friendly; desktop/mobile distinct nav & detail; RLS + place routes + auth + Sugar/Munch fixed; tokens used where UI is touched.
 
-### Phase 10 — Simplify and refocus MVP *(active)*
+### Phase 10 — Simplify and refocus MVP
 
 Primary loop only: find → save → tag → map.
 
 - [x] Remove Community / equal-weight nav from primary chrome; map is the app
-- [x] Compact header: wordmark, search, My places / Other people, avatar
+- [x] Compact header: wordmark, search, layer toggles, avatar
 - [x] Map/List toggle; floating Add a place
-- [x] Around here: map click → reverse + nearby candidates → custom place
 - [x] Place composer over map (category, status, dog badges, note, visibility)
 - [x] Preview drawer/sheet (XOR desktop/mobile)
 - [x] Migration **014** — `dog_badges`, `been_there`, public overlay RPC, categories
 - [ ] Apply migration 014 on hosted Supabase
-- [ ] Breakpoint QA + empty-state polish
-- [ ] Provider images / Wikimedia when rights allow (placeholders OK for now)
+
+### Phase 11 — Smart Nearby Discovery MVP *(active)*
+
+On-demand Foursquare Places for authenticated users; save only selected places; independent My places / Community layers.
+
+- [x] `FoursquarePlaceProvider` — nearby, details, photos, tips, `resolveCandidate`
+- [x] Auth-gated `/api/discovery/*` with discovery vs enrichment budgets
+- [x] Locality search → nearby list; Add a place → choose-location + radius circle
+- [x] Batch Dogmarked decorate for candidate thumbnails / contributor counts
+- [x] Rich selected-place card; category artwork; custom-place fallback
+- [x] Migration **015** — `place_provider_cache`, `external_api_usage`, map preferences
+- [ ] Apply migrations 014–015 on hosted Supabase; set `FOURSQUARE_API_KEY` on Vercel
+- [ ] Smoke: Lauterbrunnen nearby, pin-radius, two-user privacy
+
+**Deferred (Future Scaling):** FSQ Open Source regional imports, coverage polygons, PMTiles, Redis — revisit at ~500–1,000 users or when API cost/rate limits warrant it.
 
 ---
 

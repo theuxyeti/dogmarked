@@ -24,6 +24,9 @@ export interface NearbyPlaceInput extends CoordinateInput {
   limit?: number;
 }
 
+/** Internal geocode kinds — map from provider fields in one place only. */
+export type GeocodeResultKind = "locality" | "region" | "address" | "poi" | "unknown";
+
 export interface ExternalPlace {
   provider: string;
   externalId: string;
@@ -33,7 +36,10 @@ export interface ExternalPlace {
   countryCode: string;
   formattedAddress: string;
   category?: string | null;
+  /** @deprecated prefer resultKind */
   kind: "place" | "destination";
+  /** Normalized MapTiler/OSM place type mapping */
+  resultKind: GeocodeResultKind;
   attribution: string;
   /** Normalized licensable subset only — never store full provider payload blindly */
   normalized: Record<string, string | number | null>;

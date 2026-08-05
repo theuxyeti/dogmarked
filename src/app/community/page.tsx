@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 
 /**
- * Community destination deferred from MVP.
- * Public discovery is the “Other people” map overlay.
+ * Community destination deferred from MVP primary nav.
+ * Public discovery is the Community map layer.
  */
 export default function CommunityPage() {
-  redirect("/explore?overlay=others");
+  redirect("/explore?community=1");
 }

@@ -23,5 +23,7 @@ export async function GET() {
     supabase: supabaseConfigured && supabaseReachable,
     supabaseConfigured,
     maptiler: isMapTilerConfigured(),
+    foursquareConfigured: Boolean(process.env.FOURSQUARE_API_KEY?.trim()),
+    fsqDiscoveryEnabled: process.env.FSQ_DISCOVERY_ENABLED !== "false",
   });
 }

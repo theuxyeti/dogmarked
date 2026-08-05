@@ -21,6 +21,10 @@ export type ComposerDraft = {
   category?: MvpCategoryId;
   placeId?: string;
   slug?: string;
+  status?: MvpSaveStatus;
+  visibility?: "private" | "public";
+  note?: string;
+  dogBadges?: DogBadgeId[];
 };
 
 export type ComposerSavePayload = {
@@ -50,10 +54,12 @@ export function PlaceComposer({
 }) {
   const [name, setName] = useState(draft.name);
   const [category, setCategory] = useState<MvpCategoryId>(draft.category ?? "other");
-  const [status, setStatus] = useState<MvpSaveStatus>("want_to_go");
-  const [visibility, setVisibility] = useState<"private" | "public">("private");
-  const [note, setNote] = useState("");
-  const [badges, setBadges] = useState<DogBadgeId[]>([]);
+  const [status, setStatus] = useState<MvpSaveStatus>(draft.status ?? "want_to_go");
+  const [visibility, setVisibility] = useState<"private" | "public">(
+    draft.visibility ?? "private",
+  );
+  const [note, setNote] = useState(draft.note ?? "");
+  const [badges, setBadges] = useState<DogBadgeId[]>(draft.dogBadges ?? []);
   const [error, setError] = useState<string | null>(null);
 
   function toggleBadge(id: DogBadgeId) {
