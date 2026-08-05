@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { logServerError, publicApiError } from "@/lib/api-errors";
 import { parseLatLng, requireDiscoveryUser } from "@/lib/discovery/auth";
 import { decorateCandidatesWithDogmarked } from "@/lib/discovery/decorate";
+import {
+  discoveryErrorFromUnknown,
+  logDiscoveryEvent,
+  ProviderHttpError,
+  userMessageForDiscoveryError,
+  type DiscoveryError,
+} from "@/lib/discovery/errors";
 import {
   clampRadiusMeters,
   DEFAULT_RADIUS_M,
@@ -16,7 +22,25 @@ import { getDiscoveryProvider, getGeocodingProvider } from "@/lib/places/provide
 
 export async function GET(request: Request) {
   const auth = await requireDiscoveryUser();
-  if (auth.error) return auth.error;
+  if (auth.error) {
+    const discoveryError: DiscoveryError = {
+      code: "AUTH_REQUIRED",
+      message: "Sign in to discover nearby places.",
+      retryable: false,
+    };
+    return NextResponse.json(
+      {
+        candidates: [],
+        catalogCoverage: "uncovered",
+        fallbackRecommended: true,
+        radiusMeters: DEFAULT_RADIUS_M,
+        discoveryAvailable: false,
+        discoveryError,
+        message: userMessageForDiscoveryError(discoveryError),
+      } satisfies NearbyDiscoveryResponse & { message: string },
+      { status: 401 },
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const coords = parseLatLng(searchParams);
@@ -47,30 +71,64 @@ export async function GET(request: Request) {
     }
   }
 
+  const enrichmentMeta = {
+    photosEnabled: enrichment.photos,
+    tipsEnabled: enrichment.tips,
+    premiumDetailsEnabled: enrichment.premiumDetails,
+  };
+
   if (!discovery.nearby) {
-    const body: NearbyDiscoveryResponse = {
+    const discoveryError: DiscoveryError = {
+      code: process.env.FOURSQUARE_API_KEY?.trim()
+        ? "DISCOVERY_LIMIT_REACHED"
+        : "PROVIDER_NOT_CONFIGURED",
+      message: discovery.reason ?? "Nearby discovery unavailable.",
+      retryable: false,
+    };
+    logDiscoveryEvent({
+      endpoint: "/places/search",
+      provider: "foursquare",
+      httpStatus: null,
+      durationMs: 0,
+      radiusMeters,
+      resultCount: 0,
+      authenticated: true,
+      budgetBlocked: discoveryError.code === "DISCOVERY_LIMIT_REACHED",
+      errorCode: discoveryError.code,
+      errorSnippet: discovery.reason ?? null,
+    });
+    return NextResponse.json({
       candidates: [],
       catalogCoverage: "uncovered",
       fallbackRecommended: true,
       radiusMeters,
       discoveryAvailable: false,
-      enrichment: {
-        photosEnabled: enrichment.photos,
-        tipsEnabled: enrichment.tips,
-        premiumDetailsEnabled: enrichment.premiumDetails,
-      },
+      discoveryError,
+      enrichment: enrichmentMeta,
       label,
-    };
-    return NextResponse.json({
-      ...body,
-      message:
-        discovery.reason ??
-        "Nearby discovery is temporarily unavailable. Use map places or create a custom pin.",
-    });
+      message: userMessageForDiscoveryError(discoveryError),
+    } satisfies NearbyDiscoveryResponse & { message: string });
   }
 
   const provider = getDiscoveryProvider();
   if (!provider) {
+    const discoveryError: DiscoveryError = {
+      code: "PROVIDER_NOT_CONFIGURED",
+      message: "FOURSQUARE_API_KEY is not configured.",
+      retryable: false,
+    };
+    logDiscoveryEvent({
+      endpoint: "/places/search",
+      provider: "foursquare",
+      httpStatus: null,
+      durationMs: 0,
+      radiusMeters,
+      resultCount: 0,
+      authenticated: true,
+      budgetBlocked: false,
+      errorCode: discoveryError.code,
+      errorSnippet: "missing FOURSQUARE_API_KEY",
+    });
     return NextResponse.json(
       {
         candidates: [],
@@ -78,15 +136,17 @@ export async function GET(request: Request) {
         fallbackRecommended: true,
         radiusMeters,
         discoveryAvailable: false,
-        message: "FOURSQUARE_API_KEY is not configured.",
+        discoveryError,
+        enrichment: enrichmentMeta,
         label,
+        message: userMessageForDiscoveryError(discoveryError),
       } satisfies NearbyDiscoveryResponse & { message: string },
       { status: 503 },
     );
   }
 
+  const started = Date.now();
   try {
-    const started = Date.now();
     const raw = await provider.nearby({
       latitude: coords.lat,
       longitude: coords.lng,
@@ -94,16 +154,20 @@ export async function GET(request: Request) {
       limit,
     });
     const candidates = await decorateCandidatesWithDogmarked(raw, auth.user.id);
+    const durationMs = Date.now() - started;
 
-    console.info(
-      JSON.stringify({
-        scope: "discovery.nearby",
-        durationMs: Date.now() - started,
-        resultCount: candidates.length,
-        radiusMeters,
-        source: "foursquare",
-      }),
-    );
+    logDiscoveryEvent({
+      endpoint: "/places/search",
+      provider: "foursquare",
+      httpStatus: 200,
+      durationMs,
+      radiusMeters,
+      resultCount: candidates.length,
+      authenticated: true,
+      budgetBlocked: false,
+      errorCode: null,
+      errorSnippet: null,
+    });
 
     const body: NearbyDiscoveryResponse = {
       candidates,
@@ -111,16 +175,33 @@ export async function GET(request: Request) {
       fallbackRecommended: candidates.length === 0,
       radiusMeters,
       discoveryAvailable: true,
-      enrichment: {
-        photosEnabled: enrichment.photos,
-        tipsEnabled: enrichment.tips,
-        premiumDetailsEnabled: enrichment.premiumDetails,
-      },
+      enrichment: enrichmentMeta,
       label,
     };
     return NextResponse.json(body);
   } catch (err) {
-    logServerError("discovery.nearby", err);
+    const discoveryError = discoveryErrorFromUnknown(err);
+    const httpStatus = err instanceof ProviderHttpError ? err.status : null;
+    const errorSnippet =
+      err instanceof ProviderHttpError
+        ? err.bodySnippet
+        : err instanceof Error
+          ? err.message.slice(0, 200)
+          : String(err).slice(0, 200);
+
+    logDiscoveryEvent({
+      endpoint: "/places/search",
+      provider: "foursquare",
+      httpStatus,
+      durationMs: Date.now() - started,
+      radiusMeters,
+      resultCount: 0,
+      authenticated: true,
+      budgetBlocked: false,
+      errorCode: discoveryError.code,
+      errorSnippet,
+    });
+
     return NextResponse.json(
       {
         candidates: [],
@@ -128,12 +209,11 @@ export async function GET(request: Request) {
         fallbackRecommended: true,
         radiusMeters,
         discoveryAvailable: false,
-        error: publicApiError(
-          err instanceof Error ? err : null,
-          "Nearby search failed. You can still create a custom place.",
-        ),
+        discoveryError,
+        enrichment: enrichmentMeta,
         label,
-      },
+        message: userMessageForDiscoveryError(discoveryError),
+      } satisfies NearbyDiscoveryResponse & { message: string },
       { status: 502 },
     );
   }

@@ -1,4 +1,5 @@
 import { mapFsqCategoryToMvp } from "@/lib/discovery/fsq-category-map";
+import { ProviderHttpError } from "@/lib/discovery/errors";
 import type {
   NearbySearchInput,
   PlaceCandidate,
@@ -14,6 +15,16 @@ const API_BASE = "https://places-api.foursquare.com";
 const API_VERSION = "2025-06-17";
 const ATTRIBUTION = "Place data © Foursquare";
 
+/** Explicit Pro fields for lightweight nearby candidates. */
+const NEARBY_FIELDS =
+  "fsq_place_id,name,latitude,longitude,location,categories,distance";
+
+const DETAILS_CORE_FIELDS =
+  "fsq_place_id,name,latitude,longitude,location,categories,distance";
+
+const DETAILS_PREMIUM_FIELDS =
+  "fsq_place_id,name,latitude,longitude,location,categories,distance,tel,website,hours,description";
+
 type FsqPlace = {
   fsq_place_id?: string;
   fsq_id?: string;
@@ -23,13 +34,18 @@ type FsqPlace = {
   geocodes?: { main?: { latitude?: number; longitude?: number } };
   location?: {
     formatted_address?: string;
+    formattedAddress?: string;
     address?: string;
     locality?: string;
     region?: string;
     postcode?: string;
     country?: string;
   };
-  categories?: Array<{ fsq_category_id?: string; name?: string }>;
+  categories?: Array<{
+    fsq_category_id?: string;
+    id?: number | string;
+    name?: string;
+  }>;
   distance?: number;
   tel?: string;
   website?: string;
@@ -38,7 +54,8 @@ type FsqPlace = {
 };
 
 function placeId(p: FsqPlace): string | null {
-  return p.fsq_place_id ?? p.fsq_id ?? null;
+  const id = p.fsq_place_id ?? p.fsq_id;
+  return id ? String(id) : null;
 }
 
 function coords(p: FsqPlace): { lat: number; lng: number } | null {
@@ -50,11 +67,32 @@ function coords(p: FsqPlace): { lat: number; lng: number } | null {
   return { lat, lng };
 }
 
-function toCandidate(p: FsqPlace): PlaceCandidate | null {
+function formatAddress(loc: FsqPlace["location"] | undefined): string | undefined {
+  if (!loc) return undefined;
+  if (loc.formatted_address) return loc.formatted_address;
+  if (loc.formattedAddress) return loc.formattedAddress;
+  const parts = [loc.address, loc.locality, loc.region, loc.postcode].filter(Boolean);
+  return parts.length ? parts.join(", ") : undefined;
+}
+
+function countryCode(loc: FsqPlace["location"] | undefined): string | undefined {
+  const c = loc?.country?.trim();
+  if (!c) return undefined;
+  if (c.length === 2) return c.toUpperCase();
+  // ISO-ish country names occasionally appear — leave undefined rather than slicing "Switzerland" → "SW"
+  return undefined;
+}
+
+export function toCandidate(p: FsqPlace): PlaceCandidate | null {
   const id = placeId(p);
   const c = coords(p);
   if (!id || !c) return null;
-  const mapped = mapFsqCategoryToMvp(p.categories);
+  const mapped = mapFsqCategoryToMvp(
+    (p.categories ?? []).map((cat) => ({
+      id: cat.fsq_category_id ?? (cat.id != null ? String(cat.id) : undefined),
+      name: cat.name,
+    })),
+  );
   const loc = p.location;
   return {
     provider: "foursquare",
@@ -65,18 +103,26 @@ function toCandidate(p: FsqPlace): PlaceCandidate | null {
     distanceMeters: typeof p.distance === "number" ? p.distance : undefined,
     category: mapped.category,
     sourceCategory: mapped.sourceCategory,
-    formattedAddress: loc?.formatted_address ?? loc?.address,
+    formattedAddress: formatAddress(loc),
     locality: loc?.locality,
     region: loc?.region,
-    countryCode: loc?.country?.slice(0, 2)?.toUpperCase(),
+    countryCode: countryCode(loc),
     phone: p.tel,
     website: p.website,
     attribution: ATTRIBUTION,
   };
 }
 
+function extractResults(data: unknown): FsqPlace[] {
+  if (!data || typeof data !== "object") return [];
+  const obj = data as Record<string, unknown>;
+  if (Array.isArray(obj.results)) return obj.results as FsqPlace[];
+  if (Array.isArray(data)) return data as FsqPlace[];
+  return [];
+}
+
 /**
- * Foursquare Places API — server-only. Never import from client components.
+ * Foursquare Places API — server-only. Never import from Client Components.
  */
 export class FoursquarePlaceProvider {
   constructor(private readonly apiKey: string) {}
@@ -97,29 +143,64 @@ export class FoursquarePlaceProvider {
     for (const [k, v] of Object.entries(params)) {
       if (v != null && v !== "") url.searchParams.set(k, String(v));
     }
+    const started = Date.now();
     const res = await fetch(url.toString(), {
       headers: this.headers(),
       cache: "no-store",
     });
+    const bodyText = await res.text().catch(() => "");
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Foursquare ${path} failed (${res.status}): ${body.slice(0, 200)}`);
+      throw new ProviderHttpError({
+        status: res.status,
+        provider: "foursquare",
+        endpoint: path,
+        bodySnippet: bodyText.replace(/Bearer\s+\S+/gi, "Bearer [redacted]"),
+      });
     }
-    return (await res.json()) as T;
+    void started;
+    if (!bodyText) return {} as T;
+    try {
+      return JSON.parse(bodyText) as T;
+    } catch {
+      throw new ProviderHttpError({
+        status: 502,
+        provider: "foursquare",
+        endpoint: path,
+        bodySnippet: "Invalid JSON response",
+      });
+    }
   }
 
   async nearby(input: NearbySearchInput): Promise<PlaceCandidate[]> {
     const limit = Math.min(MAX_NEARBY_RESULTS, Math.max(1, input.limit || 15));
-    const data = await this.getJson<{ results?: FsqPlace[] }>("/places/search", {
-      ll: `${input.latitude},${input.longitude}`,
-      radius: Math.round(input.radiusMeters),
-      limit,
-      sort: "DISTANCE",
-      fields:
-        "fsq_place_id,name,latitude,longitude,location,categories,distance",
-    });
-    await recordFsqUsage("nearby");
-    return (data.results ?? [])
+    let data: unknown;
+    try {
+      data = await this.getJson("/places/search", {
+        ll: `${input.latitude},${input.longitude}`,
+        radius: Math.round(input.radiusMeters),
+        limit,
+        sort: "DISTANCE",
+        fields: NEARBY_FIELDS,
+      });
+    } catch (err) {
+      // Retry once without fields (defaults to all Pro fields) if bad request
+      if (err instanceof ProviderHttpError && err.status === 400) {
+        data = await this.getJson("/places/search", {
+          ll: `${input.latitude},${input.longitude}`,
+          radius: Math.round(input.radiusMeters),
+          limit,
+          sort: "DISTANCE",
+        });
+      } else {
+        throw err;
+      }
+    }
+    try {
+      await recordFsqUsage("nearby");
+    } catch {
+      /* usage tracking must not break discovery */
+    }
+    return extractResults(data)
       .map(toCandidate)
       .filter((p): p is PlaceCandidate => p != null)
       .slice(0, limit);
@@ -130,15 +211,20 @@ export class FoursquarePlaceProvider {
     proximity?: { latitude: number; longitude: number },
     limit = 8,
   ): Promise<PlaceCandidate[]> {
-    const data = await this.getJson<{ results?: FsqPlace[] }>("/places/search", {
+    const data = await this.getJson("/places/search", {
       query: query.trim(),
       ll: proximity ? `${proximity.latitude},${proximity.longitude}` : undefined,
+      radius: proximity ? 2000 : undefined,
       limit,
       sort: proximity ? "DISTANCE" : "RELEVANCE",
-      fields: "fsq_place_id,name,latitude,longitude,location,categories,distance",
+      fields: NEARBY_FIELDS,
     });
-    await recordFsqUsage("search");
-    return (data.results ?? [])
+    try {
+      await recordFsqUsage("search");
+    } catch {
+      /* ignore */
+    }
+    return extractResults(data)
       .map(toCandidate)
       .filter((p): p is PlaceCandidate => p != null);
   }
@@ -146,12 +232,16 @@ export class FoursquarePlaceProvider {
   async resolveCandidate(
     input: ResolveCandidateInput,
   ): Promise<PlaceCandidate | null> {
-    const results = await this.search(input.name, {
-      latitude: input.latitude,
-      longitude: input.longitude,
-    }, 5);
-    // search already recorded; also count as resolve for clarity if needed
-    await recordFsqUsage("resolve");
+    const results = await this.search(
+      input.name,
+      { latitude: input.latitude, longitude: input.longitude },
+      5,
+    );
+    try {
+      await recordFsqUsage("resolve");
+    } catch {
+      /* ignore */
+    }
 
     const nameNorm = normalizeName(input.name);
     const addrNorm = input.address ? normalizeName(input.address) : "";
@@ -164,15 +254,16 @@ export class FoursquarePlaceProvider {
       if (dist > 120) continue;
       const rName = normalizeName(r.name);
       const nameClose =
-        rName === nameNorm ||
-        rName.includes(nameNorm) ||
-        nameNorm.includes(rName);
+        rName === nameNorm || rName.includes(nameNorm) || nameNorm.includes(rName);
       if (!nameClose) continue;
       if (addrNorm && r.formattedAddress) {
         const rAddr = normalizeName(r.formattedAddress);
-        if (!rAddr.includes(addrNorm.slice(0, 12)) && !addrNorm.includes(rAddr.slice(0, 12))) {
-          // soft address check — still allow strong name+distance match under 60m
-          if (dist > 60) continue;
+        if (
+          !rAddr.includes(addrNorm.slice(0, 12)) &&
+          !addrNorm.includes(rAddr.slice(0, 12)) &&
+          dist > 60
+        ) {
+          continue;
         }
       }
       return r;
@@ -184,19 +275,40 @@ export class FoursquarePlaceProvider {
     externalId: string,
     premiumFields: boolean,
   ): Promise<PlaceDetails | null> {
-    const fields = premiumFields
-      ? "fsq_place_id,name,latitude,longitude,location,categories,tel,website,hours,description,distance"
-      : "fsq_place_id,name,latitude,longitude,location,categories,distance";
-
-    const p = await this.getJson<FsqPlace>(`/places/${encodeURIComponent(externalId)}`, {
-      fields,
-    });
-    await recordFsqUsage("details");
+    const fields = premiumFields ? DETAILS_PREMIUM_FIELDS : DETAILS_CORE_FIELDS;
+    let p: FsqPlace;
+    try {
+      p = await this.getJson<FsqPlace>(`/places/${encodeURIComponent(externalId)}`, {
+        fields,
+      });
+    } catch (err) {
+      if (
+        premiumFields &&
+        err instanceof ProviderHttpError &&
+        (err.status === 400 || err.status === 402 || err.status === 403)
+      ) {
+        p = await this.getJson<FsqPlace>(`/places/${encodeURIComponent(externalId)}`, {
+          fields: DETAILS_CORE_FIELDS,
+        });
+      } else {
+        throw err;
+      }
+    }
+    try {
+      await recordFsqUsage("details");
+    } catch {
+      /* ignore */
+    }
 
     const id = placeId(p);
     const c = coords(p);
     if (!id || !c) return null;
-    const mapped = mapFsqCategoryToMvp(p.categories);
+    const mapped = mapFsqCategoryToMvp(
+      (p.categories ?? []).map((cat) => ({
+        id: cat.fsq_category_id ?? (cat.id != null ? String(cat.id) : undefined),
+        name: cat.name,
+      })),
+    );
     const loc = p.location;
     return {
       provider: "foursquare",
@@ -206,10 +318,10 @@ export class FoursquarePlaceProvider {
       longitude: c.lng,
       category: mapped.category,
       sourceCategory: mapped.sourceCategory,
-      formattedAddress: loc?.formatted_address ?? loc?.address,
+      formattedAddress: formatAddress(loc),
       locality: loc?.locality,
       region: loc?.region,
-      countryCode: loc?.country?.slice(0, 2)?.toUpperCase(),
+      countryCode: countryCode(loc),
       postalCode: loc?.postcode,
       phone: premiumFields ? p.tel : undefined,
       website: premiumFields ? p.website : undefined,
@@ -222,23 +334,34 @@ export class FoursquarePlaceProvider {
   }
 
   async photos(externalId: string, limit = 8): Promise<PlacePhoto[]> {
-    const data = await this.getJson<
-      Array<{
+    const data = await this.getJson<unknown>(
+      `/places/${encodeURIComponent(externalId)}/photos`,
+      {
+        limit: Math.min(8, Math.max(1, limit)),
+        sort: "POPULAR",
+      },
+    );
+    try {
+      await recordFsqUsage("photos");
+    } catch {
+      /* ignore */
+    }
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray((data as { results?: unknown }).results)
+        ? ((data as { results: unknown[] }).results)
+        : [];
+
+    const photos: PlacePhoto[] = [];
+    list.forEach((raw, i) => {
+      const ph = raw as {
         id?: string;
         prefix?: string;
         suffix?: string;
         width?: number;
         height?: number;
-      }>
-    >(`/places/${encodeURIComponent(externalId)}/photos`, {
-      limit: Math.min(8, Math.max(1, limit)),
-      sort: "POPULAR",
-    });
-    await recordFsqUsage("photos");
-
-    const list = Array.isArray(data) ? data : [];
-    const photos: PlacePhoto[] = [];
-    list.forEach((ph, i) => {
+      };
       if (!ph.prefix || !ph.suffix) return;
       photos.push({
         id: ph.id ?? `photo-${i}`,
@@ -252,28 +375,33 @@ export class FoursquarePlaceProvider {
   }
 
   async tips(externalId: string, limit = 3): Promise<PlaceTip[]> {
-    const data = await this.getJson<{
-      results?: Array<{
+    const data = await this.getJson<unknown>(
+      `/places/${encodeURIComponent(externalId)}/tips`,
+      {
+        limit: Math.min(3, Math.max(1, limit)),
+        sort: "POPULAR",
+      },
+    );
+    try {
+      await recordFsqUsage("tips");
+    } catch {
+      /* ignore */
+    }
+
+    const results = Array.isArray(data)
+      ? data
+      : Array.isArray((data as { results?: unknown }).results)
+        ? ((data as { results: unknown[] }).results)
+        : [];
+
+    const tips: PlaceTip[] = [];
+    for (const raw of results) {
+      const t = raw as {
         fsq_tip_id?: string;
         id?: string;
         text?: string;
         created_at?: string;
-      }>;
-    }>(`/places/${encodeURIComponent(externalId)}/tips`, {
-      limit: Math.min(3, Math.max(1, limit)),
-      sort: "POPULAR",
-    });
-    await recordFsqUsage("tips");
-
-    const results = (data.results ??
-      (Array.isArray(data) ? data : [])) as Array<{
-      fsq_tip_id?: string;
-      id?: string;
-      text?: string;
-      created_at?: string;
-    }>;
-    const tips: PlaceTip[] = [];
-    for (const t of results) {
+      };
       const text = t.text?.trim();
       if (!text) continue;
       tips.push({
@@ -282,7 +410,7 @@ export class FoursquarePlaceProvider {
         createdAt: t.created_at,
         attribution: ATTRIBUTION,
       });
-      if (tips.length >= 3) break;
+      if (tips.length >= limit) break;
     }
     return tips;
   }

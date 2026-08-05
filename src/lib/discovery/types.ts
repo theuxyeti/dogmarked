@@ -88,6 +88,12 @@ export interface NearbyDiscoveryResponse {
   fallbackRecommended: boolean;
   radiusMeters: number;
   discoveryAvailable: boolean;
+  /** Structured provider/config failure — absent on success (including empty results). */
+  discoveryError?: {
+    code: string;
+    message: string;
+    retryable: boolean;
+  };
   enrichment?: {
     photosEnabled: boolean;
     tipsEnabled: boolean;

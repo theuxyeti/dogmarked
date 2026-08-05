@@ -31,6 +31,24 @@ export type TempPin = {
   radiusMeters: number;
 };
 
+export type RenderedPoiQuery = {
+  id?: string;
+  name: string;
+  lat: number;
+  lng: number;
+  layerId?: string;
+  className?: string;
+  subclass?: string;
+};
+
+export type MapViewApi = {
+  queryRenderedPoisAround: (
+    lat: number,
+    lng: number,
+    radiusMeters: number,
+  ) => RenderedPoiQuery[];
+};
+
 export interface MapViewProps {
   places: MapPlace[];
   selectedSlug?: string | null;
@@ -52,6 +70,7 @@ export interface MapViewProps {
     maxLat: number;
   }) => void;
   onViewportChange?: (viewport: { lat: number; lng: number; zoom: number }) => void;
+  onMapApi?: (api: MapViewApi | null) => void;
   className?: string;
 }
 
@@ -131,6 +150,7 @@ export function MapView({
   onTempPinDragEnd,
   onBoundsChange,
   onViewportChange,
+  onMapApi,
   className,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -143,6 +163,7 @@ export function MapView({
   const onViewportRef = useRef(onViewportChange);
   const onTempPinChangeRef = useRef(onTempPinChange);
   const onTempPinDragEndRef = useRef(onTempPinDragEnd);
+  const onMapApiRef = useRef(onMapApi);
   const chooseModeRef = useRef(chooseLocationMode);
   const placesRef = useRef(places);
 
@@ -164,6 +185,9 @@ export function MapView({
   useEffect(() => {
     onTempPinDragEndRef.current = onTempPinDragEnd;
   }, [onTempPinDragEnd]);
+  useEffect(() => {
+    onMapApiRef.current = onMapApi;
+  }, [onMapApi]);
   useEffect(() => {
     chooseModeRef.current = chooseLocationMode;
   }, [chooseLocationMode]);
@@ -206,6 +230,78 @@ export function MapView({
       });
     };
 
+    const queryRenderedPoisAround = (
+      lat: number,
+      lng: number,
+      radiusMeters: number,
+    ): RenderedPoiQuery[] => {
+      const point = map.project([lng, lat]);
+      // Approximate meters→pixels at this latitude/zoom
+      const metersPerPx =
+        (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, map.getZoom());
+      const px = Math.max(24, Math.min(220, radiusMeters / Math.max(metersPerPx, 0.1)));
+      const bbox: [[number, number], [number, number]] = [
+        [point.x - px, point.y - px],
+        [point.x + px, point.y + px],
+      ];
+      let features: ReturnType<Map["queryRenderedFeatures"]> = [];
+      try {
+        const layerIds = (map.getStyle()?.layers ?? [])
+          .filter(
+            (l) =>
+              l.type === "symbol" &&
+              POI_LAYER_HINTS.some((h) => l.id.toLowerCase().includes(h)),
+          )
+          .map((l) => l.id);
+        features = layerIds.length
+          ? map.queryRenderedFeatures(bbox, { layers: layerIds })
+          : map.queryRenderedFeatures(bbox);
+      } catch {
+        features = map.queryRenderedFeatures(bbox);
+      }
+
+      const hits: RenderedPoiQuery[] = [];
+      for (const f of features) {
+        const layerId = f.layer?.id?.toLowerCase() ?? "";
+        if (
+          layerId.includes("road") ||
+          layerId.includes("street") ||
+          layerId.includes("highway") ||
+          layerId.includes("boundary") ||
+          layerId.includes("water") ||
+          layerId.includes("housenumber")
+        ) {
+          continue;
+        }
+        if (!POI_LAYER_HINTS.some((h) => layerId.includes(h)) && f.layer?.type !== "symbol") {
+          continue;
+        }
+        const props = (f.properties ?? {}) as Record<string, unknown>;
+        const name =
+          (props.name as string | undefined) ||
+          (props.name_en as string | undefined) ||
+          (props["name:en"] as string | undefined);
+        if (!name) continue;
+        let flat = lat;
+        let flng = lng;
+        if (f.geometry?.type === "Point" && Array.isArray(f.geometry.coordinates)) {
+          flng = Number(f.geometry.coordinates[0]);
+          flat = Number(f.geometry.coordinates[1]);
+        }
+        if (!Number.isFinite(flat) || !Number.isFinite(flng)) continue;
+        hits.push({
+          id: f.id != null ? String(f.id) : undefined,
+          name,
+          lat: flat,
+          lng: flng,
+          layerId: f.layer?.id,
+          className: typeof props.class === "string" ? props.class : undefined,
+          subclass: typeof props.subclass === "string" ? props.subclass : undefined,
+        });
+      }
+      return hits;
+    };
+
     map.on("load", () => {
       emitBounds();
       if (!map.getSource(RADIUS_SOURCE)) {
@@ -226,6 +322,7 @@ export function MapView({
           paint: { "line-color": "#EE7D59", "line-width": 2, "line-opacity": 0.7 },
         });
       }
+      onMapApiRef.current?.({ queryRenderedPoisAround });
     });
     map.on("moveend", emitBounds);
 
@@ -270,6 +367,7 @@ export function MapView({
     mapRef.current = map;
 
     return () => {
+      onMapApiRef.current?.(null);
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       tempMarkerRef.current?.remove();

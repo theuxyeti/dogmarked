@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { List, Map as MapIcon, Plus, X } from "lucide-react";
-import type { MapClickTarget } from "@/components/map/map-view";
+import type { MapClickTarget, MapViewApi } from "@/components/map/map-view";
 import {
   PlaceComposer,
   type ComposerDraft,
@@ -19,6 +19,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { categoryEmoji } from "@/lib/discovery/category-icons";
+import { renderedPoisToCandidates } from "@/lib/discovery/maptiler-fallback";
 import {
   DEFAULT_RADIUS_M,
   RADIUS_PRESETS_M,
@@ -87,7 +88,11 @@ type NearbySession = {
   radiusMeters: number;
   candidates: PlaceCandidate[];
   discoveryAvailable: boolean;
+  /** loading | success | empty | failure | config */
+  status: "loading" | "success" | "empty" | "failure" | "config" | "auth";
   message?: string;
+  errorCode?: string;
+  usedFallback?: boolean;
 };
 
 function formatDistance(m?: number) {
@@ -144,6 +149,7 @@ export function ExploreClient() {
 
   const abortRef = useRef<AbortController | null>(null);
   const enrichAbortRef = useRef<AbortController | null>(null);
+  const mapApiRef = useRef<MapViewApi | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1280px)");
@@ -238,6 +244,16 @@ export function ExploreClient() {
     return () => clearTimeout(t);
   }, [urlQuery]);
 
+  const applyMaptilerFallback = useCallback(
+    (lat: number, lng: number, radiusMeters: number): PlaceCandidate[] => {
+      const api = mapApiRef.current;
+      if (!api) return [];
+      const hits = api.queryRenderedPoisAround(lat, lng, radiusMeters);
+      return renderedPoisToCandidates(hits, { lat, lng }, radiusMeters);
+    },
+    [],
+  );
+
   const runNearby = useCallback(
     async (lat: number, lng: number, radiusMeters: number, label?: string) => {
       abortRef.current?.abort();
@@ -250,29 +266,20 @@ export function ExploreClient() {
       setComposer(null);
       setPreviewMine(null);
       setNearbyLoading(true);
+      const title = label?.trim() || "this place";
       setNearby({
         lat,
         lng,
-        label: label ?? "Around here",
+        label: title,
         radiusMeters,
         candidates: [],
         discoveryAvailable: true,
+        status: "loading",
+        message: `Finding places around ${title}…`,
       });
       setFlyTo({ lat, lng, zoom: 16 });
 
       try {
-        if (!signedIn) {
-          setNearby({
-            lat,
-            lng,
-            label: label ?? "Around here",
-            radiusMeters,
-            candidates: [],
-            discoveryAvailable: false,
-            message: "Sign in to discover nearby places.",
-          });
-          return;
-        }
         const qs = new URLSearchParams({
           lat: String(lat),
           lng: String(lng),
@@ -284,31 +291,103 @@ export function ExploreClient() {
           error?: string;
         };
         if (ac.signal.aborted) return;
+
+        if (res.status === 401) {
+          setSignedIn(false);
+        } else if (res.ok) {
+          setSignedIn(true);
+        }
+
+        let candidates = json.candidates ?? [];
+        let usedFallback = false;
+        const providerFailed =
+          !res.ok ||
+          json.discoveryAvailable === false ||
+          Boolean(json.discoveryError);
+
+        if (candidates.length === 0) {
+          const fallback = applyMaptilerFallback(lat, lng, radiusMeters);
+          if (fallback.length > 0) {
+            candidates = fallback;
+            usedFallback = true;
+          }
+        }
+
+        const resolvedLabel = label?.trim() || json.label || title;
+        if (candidates.length > 0) {
+          setNearby({
+            lat,
+            lng,
+            label: resolvedLabel,
+            radiusMeters: json.radiusMeters ?? radiusMeters,
+            candidates,
+            discoveryAvailable: !providerFailed || usedFallback,
+            status: "success",
+            usedFallback,
+            errorCode: json.discoveryError?.code,
+            message: usedFallback
+              ? "Showing places visible on the map while place discovery recovers."
+              : undefined,
+          });
+          return;
+        }
+
+        if (providerFailed) {
+          const code = json.discoveryError?.code ?? (res.status === 401 ? "AUTH_REQUIRED" : undefined);
+          setNearby({
+            lat,
+            lng,
+            label: resolvedLabel,
+            radiusMeters: json.radiusMeters ?? radiusMeters,
+            candidates: [],
+            discoveryAvailable: false,
+            status:
+              code === "PROVIDER_NOT_CONFIGURED"
+                ? "config"
+                : code === "AUTH_REQUIRED"
+                  ? "auth"
+                  : "failure",
+            errorCode: code,
+            message:
+              json.message ??
+              json.discoveryError?.message ??
+              "We couldn’t reach place discovery right now. Try again or create a custom place.",
+          });
+          return;
+        }
+
         setNearby({
           lat,
           lng,
-          label: label ?? json.label ?? "Around here",
+          label: resolvedLabel,
           radiusMeters: json.radiusMeters ?? radiusMeters,
-          candidates: json.candidates ?? [],
-          discoveryAvailable: json.discoveryAvailable !== false,
-          message: json.message ?? json.error,
+          candidates: [],
+          discoveryAvailable: true,
+          status: "empty",
+          message: `No listed places were found within ${json.radiusMeters ?? radiusMeters} m. Try a larger radius or create a custom place.`,
         });
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
+        const fallback = applyMaptilerFallback(lat, lng, radiusMeters);
         setNearby({
           lat,
           lng,
-          label: label ?? "Around here",
+          label: title,
           radiusMeters,
-          candidates: [],
+          candidates: fallback,
           discoveryAvailable: false,
-          message: "Nearby search failed. You can create a custom place.",
+          status: fallback.length ? "success" : "failure",
+          usedFallback: fallback.length > 0,
+          message: fallback.length
+            ? "Showing places visible on the map while place discovery recovers."
+            : "We couldn’t reach place discovery right now. Try again or create a custom place.",
+          errorCode: "UNKNOWN_PROVIDER_ERROR",
         });
       } finally {
         if (!ac.signal.aborted) setNearbyLoading(false);
       }
     },
-    [signedIn],
+    [applyMaptilerFallback],
   );
 
   async function enrichCandidate(candidate: PlaceCandidate) {
@@ -409,19 +488,7 @@ export function ExploreClient() {
   }
 
   function onMapClick(target: MapClickTarget) {
-    if (chooseLocation || target.type === "empty") {
-      if (target.type === "empty" || target.type === "contextual_poi") {
-        setChooseLocation(false);
-        void runNearby(
-          target.lat,
-          target.lng,
-          nearby?.radiusMeters ?? DEFAULT_RADIUS_M,
-          target.type === "contextual_poi" ? target.name : undefined,
-        );
-      }
-      return;
-    }
-
+    // Saved Dogmarked pin
     if (target.type === "dogmarked") {
       const mine = mySaves.find((p) => p.slug === target.place.slug);
       if (mine) {
@@ -435,36 +502,44 @@ export function ExploreClient() {
         (c) =>
           c.externalId === target.place.id ||
           c.slug === target.place.slug ||
-          `cand-${c.externalId}` === target.place.id,
+          `cand-${c.externalId}` === target.place.id ||
+          target.place.id === `cand-${c.externalId}`,
       );
       if (cand) {
         void enrichCandidate(cand);
         return;
       }
-      void runNearby(target.place.lat, target.place.lng, DEFAULT_RADIUS_M, target.place.name);
-      return;
     }
 
-    if (target.type === "contextual_poi") {
-      const maptilerCandidate: PlaceCandidate = {
-        provider: "maptiler",
-        externalId: `mt-${target.lat},${target.lng}`,
-        name: target.name,
-        latitude: target.lat,
-        longitude: target.lng,
-        category: "other",
-        attribution: "© MapTiler © OpenStreetMap contributors",
-      };
-      setNearby({
-        lat: target.lat,
-        lng: target.lng,
-        label: target.name,
-        radiusMeters: nearby?.radiusMeters ?? DEFAULT_RADIUS_M,
-        candidates: [maptilerCandidate],
-        discoveryAvailable: true,
-      });
-      setFlyTo({ lat: target.lat, lng: target.lng, zoom: 16 });
-      void enrichCandidate(maptilerCandidate);
+    // Candidate pin click while nearby session open
+    if (target.type === "dogmarked" && nearby) {
+      const cand = nearby.candidates.find(
+        (c) => target.place.id === `cand-${c.externalId}`,
+      );
+      if (cand) {
+        void enrichCandidate(cand);
+        return;
+      }
+    }
+
+    // Explicit choose-location, empty map click, or basemap POI → nearby discovery
+    if (
+      chooseLocation ||
+      target.type === "empty" ||
+      target.type === "contextual_poi"
+    ) {
+      setChooseLocation(false);
+      const lat =
+        target.type === "dogmarked" ? target.place.lat : target.lat;
+      const lng =
+        target.type === "dogmarked" ? target.place.lng : target.lng;
+      const label =
+        target.type === "contextual_poi"
+          ? target.name
+          : nearby?.label && nearby.label !== "this place"
+            ? nearby.label
+            : undefined;
+      void runNearby(lat, lng, nearby?.radiusMeters ?? DEFAULT_RADIUS_M, label);
     }
   }
 
@@ -868,6 +943,9 @@ export function ExploreClient() {
               );
             }}
             onBoundsChange={setBbox}
+            onMapApi={(api) => {
+              mapApiRef.current = api;
+            }}
             className="h-full w-full"
           />
 
@@ -889,9 +967,9 @@ export function ExploreClient() {
                   onClick={() => {
                     setSearchHits([]);
                     const params = new URLSearchParams(searchParams.toString());
-                    params.delete("q");
+                    params.set("q", hit.name);
                     router.replace(`/explore?${params.toString()}`);
-                    if (isLocalityLike(hit)) {
+                    if (isLocalityLike(hit) || hit.resultKind === "address") {
                       void runNearby(hit.lat, hit.lng, DEFAULT_RADIUS_M, hit.name);
                     } else {
                       const candidate: PlaceCandidate = {
@@ -912,6 +990,7 @@ export function ExploreClient() {
                         radiusMeters: DEFAULT_RADIUS_M,
                         candidates: [candidate],
                         discoveryAvailable: true,
+                        status: "success",
                       });
                       setFlyTo({ lat: hit.lat, lng: hit.lng, zoom: 16 });
                       void enrichCandidate(candidate);
@@ -1065,9 +1144,11 @@ function NearbyPanel({
       <div className="flex items-start justify-between gap-2 px-4 pt-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-            Explore around
+            Nearby places
           </p>
-          <h2 className="font-display text-2xl text-[var(--color-ink)]">{session.label}</h2>
+          <h2 className="font-display text-2xl text-[var(--color-ink)]">
+            Explore around {session.label}
+          </h2>
         </div>
         <button
           type="button"
@@ -1104,8 +1185,11 @@ function NearbyPanel({
       </div>
 
       <div className="mt-3 flex-1 overflow-y-auto px-2 pb-4">
-        {loading ? (
+        {loading || session.status === "loading" ? (
           <div className="space-y-2 px-2">
+            <p className="px-2 pb-2 text-sm text-[var(--color-text-muted)]">
+              {session.message ?? `Finding places around ${session.label}…`}
+            </p>
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
@@ -1114,9 +1198,18 @@ function NearbyPanel({
             ))}
           </div>
         ) : session.candidates.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-[var(--color-text-muted)]">
-            {session.message ??
-              "No listed places were found here yet. You can create a custom place at this pin."}
+          <div className="space-y-2 px-4 py-6 text-sm text-[var(--color-text-muted)]">
+            <p>
+              {session.message ??
+                `No listed places were found within ${session.radiusMeters} m. Try a larger radius or create a custom place.`}
+            </p>
+            {session.errorCode &&
+            (process.env.NODE_ENV === "development" ||
+              session.status === "config") ? (
+              <p className="font-mono text-xs text-[var(--color-text-muted)]">
+                Diagnostic: {session.errorCode}
+              </p>
+            ) : null}
           </div>
         ) : (
           session.candidates.map((place) => (
@@ -1172,6 +1265,8 @@ function NearbyPanel({
   );
 }
 
+const legacyEnrichTried = new Set<string>();
+
 function MinePreview({
   pin,
   onClose,
@@ -1201,7 +1296,51 @@ function MinePreview({
       .catch(() => {
         setCommunity([]);
       });
-  }, [pin.slug]);
+
+    // Legacy enrichment: resolve once per place when sparse (non-blocking)
+    const key = pin.placeId;
+    if (!legacyEnrichTried.has(key)) {
+      legacyEnrichTried.add(key);
+      void fetch("/api/discovery/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: pin.name,
+          latitude: pin.lat,
+          longitude: pin.lng,
+          address: pin.address ?? pin.city ?? undefined,
+        }),
+      })
+        .then((r) => r.json())
+        .then(async (j: { candidate?: PlaceCandidate | null }) => {
+          if (!j.candidate?.externalId || j.candidate.provider !== "foursquare") return;
+          await fetch("/api/discovery/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: pin.name,
+              latitude: pin.lat,
+              longitude: pin.lng,
+              category: dbToCategory(pin.category),
+              status: pin.status,
+              visibility: pin.visibility,
+              note: pin.privateNotes,
+              dogBadges: pin.dogBadges,
+              formattedAddress: pin.address,
+              locality: pin.city,
+              provider: "foursquare",
+              externalId: j.candidate.externalId,
+              attribution: j.candidate.attribution,
+            }),
+          }).catch(() => {
+            /* non-blocking */
+          });
+        })
+        .catch(() => {
+          /* non-blocking */
+        });
+    }
+  }, [pin]);
 
   return (
     <div className="flex h-full flex-col px-4 py-4">

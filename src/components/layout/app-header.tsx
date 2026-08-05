@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { X } from "lucide-react";
 import { UserAvatarMenu } from "@/components/layout/user-avatar-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 /**
- * Compact MVP header: wordmark, search, independent My places / Community toggles, avatar.
+ * Compact MVP header: wordmark, search (preserves query), independent layer toggles, avatar.
  */
 export function AppHeader() {
   const router = useRouter();
@@ -19,8 +20,7 @@ export function AppHeader() {
   const showCommunity = searchParams.get("community") === "1";
 
   useEffect(() => {
-    const q = searchParams.get("q") ?? "";
-    setQuery(q);
+    setQuery(searchParams.get("q") ?? "");
   }, [searchParams]);
 
   function patchLayers(next: { mine?: boolean; community?: boolean }) {
@@ -31,7 +31,6 @@ export function AppHeader() {
     else params.set("mine", "0");
     if (community) params.set("community", "1");
     else params.delete("community");
-    // Drop legacy mutually-exclusive overlay param
     params.delete("overlay");
     const qs = params.toString();
     router.push(`${pathname}${qs ? `?${qs}` : ""}`);
@@ -41,17 +40,25 @@ export function AppHeader() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ showMyPlaces: mine, showCommunity: community }),
     }).catch(() => {
-      /* local URL is source of truth for guests */
+      /* guests keep URL state */
     });
   }
 
   function onSearchSubmit(e: FormEvent) {
     e.preventDefault();
     const q = query.trim();
-    if (q.length < 3) return;
+    if (q.length < 2) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("q", q);
     router.push(`/explore?${params.toString()}`);
+  }
+
+  function clearSearch() {
+    setQuery("");
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("q");
+    const qs = params.toString();
+    router.push(`${pathname}${qs ? `?${qs}` : ""}`);
   }
 
   return (
@@ -64,14 +71,24 @@ export function AppHeader() {
           Dogmarked
         </Link>
 
-        <form onSubmit={onSearchSubmit} className="min-w-0 flex-1 max-w-xl">
+        <form onSubmit={onSearchSubmit} className="relative min-w-0 flex-1 max-w-xl">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search places or addresses…"
-            className="h-10 min-h-10 rounded-[10px] border-[var(--color-border)] bg-white text-sm sm:h-11 sm:min-h-11"
+            className="h-10 min-h-10 rounded-[10px] border-[var(--color-border)] bg-white pr-10 text-sm sm:h-11 sm:min-h-11"
             aria-label="Search places"
           />
+          {query.trim() ? (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
         </form>
 
         <div className="hidden items-center gap-1 rounded-full border border-[var(--color-border)] bg-white p-0.5 text-xs font-semibold sm:flex">
